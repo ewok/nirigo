@@ -1,0 +1,14 @@
+// Window rules, ported from the sway drop-in 10-browser.conf.
+// https://github.com/YaLTeR/niri/wiki/Configuration:-Window-Rules
+//
+// Dropped in the sway -> niri move, because niri has no equivalent:
+//   * `mark Browser`   - niri has no window marks.
+//   * `sticky enable`  - niri floating windows belong to a single workspace.
+
+// Float picture-in-picture players. The title is matched loosely so that both
+// Vivaldi ("Picture in picture") and Firefox/Chromium ("Picture-in-Picture")
+// are covered.
+window-rule {
+    match title=r#"(?i)^picture[- ]in[- ]picture$"#
+    open-floating true
+}

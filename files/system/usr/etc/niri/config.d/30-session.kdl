@@ -1,0 +1,16 @@
+// Session services, ported from the wayblue sway drop-in 90-keyring.conf.
+//
+// The wayblue niri image has no equivalent of that drop-in, so without this
+// the Secret portal and anything relying on the keyring silently stops working
+// after the sway -> niri switch.
+//
+// `dbus-update-activation-environment` is deliberately *not* ported: niri
+// already pushes the session environment into systemd and D-Bus itself when
+// started via `niri --session` (i.e. through niri-session / the display
+// manager).
+//
+// Both spawns are guarded so a missing binary is a no-op instead of a startup
+// error in the niri log.
+
+spawn-at-startup "sh" "-c" "command -v gnome-keyring-daemon >/dev/null 2>&1 && exec gnome-keyring-daemon --start --components=secrets"
+spawn-at-startup "sh" "-c" "test -x /usr/libexec/pam_kwallet_init && exec /usr/libexec/pam_kwallet_init"

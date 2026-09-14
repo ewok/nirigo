@@ -1,0 +1,29 @@
+// Input devices for the Lenovo Legion Go.
+//
+// Ported from the sway drop-ins 10-io.conf and 10-touchscreen.conf.
+//
+// Note: niri has no per-device input configuration; settings apply to every
+// device of a given type. Note also that the pointing-device sections below are
+// *replaced* wholesale rather than merged into the main config.
+// https://github.com/YaLTeR/niri/wiki/Configuration:-Input
+
+input {
+    touchpad {
+        tap
+        natural-scroll
+    }
+
+    // The Legion Go only has the built-in touchscreen, so a global mapping is
+    // equivalent to sway's per-device `map_to_output`.
+    //
+    // Confirm the output name on the device with `niri msg outputs`; niri
+    // accepts either the connector name (e.g. "eDP-1") or "<make> <model>
+    // <serial>" as shown below.
+    touch {
+        map-to-output "Lenovo Group Limited Go Display 0x00888888"
+    }
+
+    // niri grabs the power key by default and turns it into sleep. Disable that
+    // so /etc/systemd/logind.conf.d/powerkey.conf stays authoritative.
+    disable-power-key-handling
+}
