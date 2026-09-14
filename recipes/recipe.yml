@@ -35,13 +35,11 @@ modules:
       - hhd
       - hhd-ui
       - git-crypt
-      - subversion
       - tailscale
       - wdisplays
       - ydotool
       - acpica-tools
       - input-remapper
-      - waydroid
       - ca-certificates
       # Secret portal / keyring backend. niri only Recommends it and wayblue
       # builds with weak deps disabled, so pull it in explicitly. See

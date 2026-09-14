@@ -13,6 +13,7 @@ PACKAGES=(
     tuned
     tuned-ppd
     tuned-switcher
+    alacritty
 )
 
 TO_REMOVE=()
