@@ -7,15 +7,17 @@ description: Niri on Legion Go
 
 # the base image to build on top of (FROM) and the version tag to use
 base-image: ghcr.io/wayblueorg/niri
-image-version: 43
+image-version: 44
 
 # module configuration, executed in order
 # you can include multiple instances of the same module
 modules:
 
+  # Bazzite's handheld kernel ("ogc" flavor) now ships from ublue-os/akmods.
+  # The old ghcr.io/bazzite-org/kernel-bazzite repo is stuck on f43.
   - type: containerfile
     snippets:
-      - COPY --from=ghcr.io/bazzite-org/kernel-bazzite:latest-f43-x86_64 / /tmp/rpms/kernel
+      - COPY --from=ghcr.io/ublue-os/akmods:ogc-44 /kernel-rpms /tmp/rpms/kernel
   - type: script
     scripts:
       - installkernel.sh
@@ -49,12 +51,12 @@ modules:
       - pamu2fcfg
       - yubikey-manager
       - podman-compose
-    remove:
-      - firefox
-      - firefox-langpacks
-      - tuned
-      - tuned-ppd
-      - tuned-switcher
+
+  # Removals live in a script instead of the module's `remove:` list so that
+  # packages missing from the base image don't abort the build.
+  - type: script
+    scripts:
+      - remove-packages.sh
 
   - type: fonts
     fonts:
