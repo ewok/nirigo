@@ -49,6 +49,19 @@ modules:
       - pamu2fcfg
       - yubikey-manager
       - podman-compose
+      # FUSE userspace filesystems. fuse3/fuse-common/fuse3-libs,
+      # fuse-overlayfs and the whole gvfs stack (including gvfs-mtp and
+      # gvfs-gphoto2, so phones/cameras already mount in Thunar) come from the
+      # base image -- listing any of those here would abort the build with
+      # "Package '...' is already in the base".
+      - fuse-sshfs
+      - rclone
+      - gocryptfs
+      # FUSE v2. Fedora Atomic drops fuse/fuse-libs on purpose
+      # (https://fedoraproject.org/wiki/Changes/AtomicDesktopDropFuse2) but
+      # AppImages still want libfuse.so.2. Listing `fuse` pulls in fuse-libs as
+      # a dependency; naming fuse-libs explicitly is not needed.
+      - fuse
 
   # Removals live in a script instead of the module's `remove:` list so that
   # packages missing from the base image don't abort the build.

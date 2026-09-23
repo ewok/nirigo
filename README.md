@@ -118,6 +118,36 @@ either by installing `xdg-desktop-portal-gnome`, or by dropping a
 `/etc/xdg/xdg-desktop-portal/niri-portals.conf` that points ScreenCast at
 `wlr`.
 
+## Filesystems (FUSE)
+
+The base image already covers most of this: `fuse3`, `fuse-overlayfs` and the
+full gvfs stack (`gvfs-mtp`, `gvfs-gphoto2`, `gvfs-smb`, `gvfs-nfs`) ship with
+wayblue, so phones and cameras mount in Thunar over USB without any extra
+setup. On top of that this image adds:
+
+| Package | Use |
+| --- | --- |
+| `fuse-sshfs` | `sshfs user@host:/path ~/mnt/host` |
+| `rclone` | `rclone mount remote: ~/mnt/remote` for Drive/S3/B2/… |
+| `gocryptfs` | Encrypted directories, e.g. `gocryptfs ~/.vault ~/vault` |
+| `fuse` (v2) | `libfuse.so.2`, needed by AppImages |
+
+`/etc/fuse.conf` sets `user_allow_other` so `-o allow_other` /
+`--allow-other` work without root.
+
+Two things to keep in mind on an ostree system:
+
+* **Mount somewhere writable.** `/usr` is read-only and sealed by composefs.
+  Use `$HOME`, `/var/mnt` or `/run/media`.
+* **Flatpaks and SELinux.** FUSE mounts are labelled `fusefs_t`, which
+  sandboxed Flatpak apps often cannot read even with `--filesystem=home`. Native
+  packages and distrobox are unaffected.
+
+FUSE v2 is layered back in deliberately — Fedora Atomic
+[drops it by default](https://fedoraproject.org/wiki/Changes/AtomicDesktopDropFuse2).
+If you would rather not have the setuid `fusermount` around, drop `fuse` from
+`recipe.yml` and run AppImages with `--appimage-extract-and-run` instead.
+
 ## Post-install
 
 If you want to install Bazzite-arch in distrobox(to run Steam):
