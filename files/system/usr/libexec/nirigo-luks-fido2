@@ -1,0 +1,396 @@
+#!/usr/bin/env bash
+
+# Enroll a FIDO2 token (YubiKey 5 / Bio / Security Key) as a LUKS2 unlock
+# method for the encrypted root volume, and wire the initramfs up to use it.
+#
+# Driven by `ujust setup-luks-fido2-unlock` / `remove-luks-fido2-unlock`.
+#
+# Why this needs a script at all
+# ------------------------------
+# `systemd-cryptenroll --fido2-device=auto` is one command, but on an ostree
+# system it is only half the job:
+#
+#   * dracut copies /etc/crypttab into the initramfs *only in hostonly mode*.
+#     This image's initramfs is built with --no-hostonly (see
+#     files/scripts/installkernel.sh), so the initrd has no crypttab at all and
+#     unlocks root purely from the rd.luks.uuid= kernel argument. Editing
+#     /etc/crypttab on the running system therefore does nothing for boot.
+#
+#     The fix is `rpm-ostree initramfs-etc --track=/etc/crypttab`, which injects
+#     the file into the initramfs without re-running dracut, and re-syncs it
+#     into every future deployment. (Deliberately not `rpm-ostree initramfs
+#     --enable`, which makes every subsequent upgrade run dracut locally.)
+#
+#   * The dracut `fido2` module has to be in the initramfs. It already is: the
+#     base image ships ublue-os-luks, whose
+#     /usr/lib/dracut/dracut.conf.d/90-ublue-luks.conf sets
+#     `add_dracutmodules+=" fido2 tpm2-tss pkcs11 pcsc "`, and a --no-hostonly
+#     build pulls fido2 in anyway via the systemd-cryptsetup module. We verify
+#     rather than assume.
+#
+# Safety
+# ------
+# The existing passphrase slot is never touched, a recovery key is enrolled
+# before anything else, and the FIDO2 unlock is proven to work offline (via
+# `systemd-cryptsetup attach`) *before* /etc/crypttab or the initramfs are
+# modified. If anything still goes wrong at boot, the passphrase prompt is the
+# fallback and `rpm-ostree rollback` restores the previous deployment.
+
+set -oue pipefail
+
+CRYPTTAB="/etc/crypttab"
+CRYPTTAB_BACKUP="/etc/crypttab.nirigo-fido2.bak"
+RECOVERY_DIR="/var/lib/nirigo"
+RECOVERY_FILE="${RECOVERY_DIR}/luks-recovery-key.txt"
+TEST_MAPPER="nirigo-fido2-test"
+
+# systemd-cryptsetup lives in libexec on Fedora; keep working if it ever moves.
+SYSTEMD_CRYPTSETUP="$(command -v systemd-cryptsetup || true)"
+if [[ -z "${SYSTEMD_CRYPTSETUP}" ]]; then
+    SYSTEMD_CRYPTSETUP="/usr/lib/systemd/systemd-cryptsetup"
+fi
+
+die() {
+    echo "error: $*" >&2
+    exit 1
+}
+
+warn() {
+    echo "warning: $*" >&2
+}
+
+note() {
+    echo "==> $*"
+}
+
+require_root() {
+    [[ "${EUID}" -eq 0 ]] || die "must run as root; use the ujust recipes instead."
+}
+
+require_ostree() {
+    command -v rpm-ostree >/dev/null 2>&1 ||
+        die "rpm-ostree not found. This script only supports rpm-ostree/bootc systems."
+}
+
+# The root volume is unlocked by the initramfs from rd.luks.uuid=, which is the
+# authoritative source for *which* device matters at boot. /etc/crypttab is only
+# consulted to find the mapper name and existing options.
+find_device() {
+    local uuid
+
+    # `|| true` because errexit would otherwise abort the assignment silently if
+    # xargs chokes on an odd /proc/cmdline; an empty uuid gives a real message.
+    uuid="$(xargs -n1 -a /proc/cmdline 2>/dev/null | sed -n 's/^rd\.luks\.uuid=//p' | head -n1 || true)"
+    [[ -n "${uuid}" ]] ||
+        die "no rd.luks.uuid= on the kernel command line; this system has no encrypted root."
+
+    # systemd names the mapper luks-<uuid>, and the karg carries that same form.
+    uuid="${uuid#luks-}"
+
+    local dev="/dev/disk/by-uuid/${uuid}"
+    [[ -b "${dev}" ]] || die "${dev} is not a block device."
+
+    printf '%s\n' "${dev}"
+}
+
+# Refuse to guess on multi-volume setups. Rewriting the wrong crypttab line is
+# the one mistake here that costs you a boot.
+crypttab_entry() {
+    [[ -f "${CRYPTTAB}" ]] || die "${CRYPTTAB} does not exist."
+
+    local count
+    count="$(grep -cvE '^[[:space:]]*(#|$)' "${CRYPTTAB}" || true)"
+    [[ "${count}" -eq 1 ]] ||
+        die "${CRYPTTAB} has ${count} entries; this script only handles a single encrypted volume. Configure it by hand."
+
+    grep -vE '^[[:space:]]*(#|$)' "${CRYPTTAB}"
+}
+
+luks_is_v2() {
+    local dev="$1"
+
+    # cryptsetup(8) is not guaranteed to be layered, and systemd-cryptenroll
+    # refuses LUKS1 on its own, so treat this as a nicety rather than a gate.
+    command -v cryptsetup >/dev/null 2>&1 || return 0
+    cryptsetup isLuks --type luks2 "${dev}"
+}
+
+token_present() {
+    local listing count
+    listing="$(systemd-cryptenroll --fido2-device=list 2>/dev/null || true)"
+    # The command prints a header row even with no tokens attached, so match the
+    # device paths rather than just checking for non-empty output.
+    count="$(printf '%s\n' "${listing}" | grep -cE '^/dev/hidraw' || true)"
+    [[ "${count}" -gt 0 ]]
+}
+
+enrolled_slots() {
+    systemd-cryptenroll "$1" 2>/dev/null || true
+}
+
+initramfs_has_fido2() {
+    command -v lsinitrd >/dev/null 2>&1 || return 0
+    lsinitrd 2>/dev/null | grep -qiE 'libfido2|token-systemd-fido2'
+}
+
+crypttab_is_tracked() {
+    rpm-ostree initramfs-etc 2>/dev/null | grep -qF "${CRYPTTAB}"
+}
+
+# Merge fido2-device=auto and x-initrd.attach into an existing crypttab options
+# field, dropping any stale fido2-* options so re-running is idempotent.
+merge_options() {
+    local existing="$1"
+    local -a kept=()
+    local -a parts=()
+    local opt
+
+    if [[ -n "${existing}" && "${existing}" != "-" ]]; then
+        IFS=',' read -ra parts <<<"${existing}"
+    fi
+
+    for opt in ${parts[@]+"${parts[@]}"}; do
+        case "${opt}" in
+        '' | '-') ;;
+        fido2-device=* | fido2-cid=* | fido2-rp=* | fido2-salt=*) ;;
+        x-initrd.attach) ;;
+        *) kept+=("${opt}") ;;
+        esac
+    done
+
+    kept+=("fido2-device=auto" "x-initrd.attach")
+
+    (
+        IFS=','
+        printf '%s\n' "${kept[*]}"
+    )
+}
+
+write_crypttab_options() {
+    local new_opts="$1"
+
+    cp -a "${CRYPTTAB}" "${CRYPTTAB_BACKUP}"
+
+    # Rewrite only the single data line; comments are preserved verbatim.
+    awk -v newopts="${new_opts}" '
+        /^[[:space:]]*(#|$)/ { print; next }
+        { print $1, $2, ($3 == "" ? "none" : $3), newopts }
+    ' "${CRYPTTAB_BACKUP}" >"${CRYPTTAB}.nirigo-new"
+
+    mv "${CRYPTTAB}.nirigo-new" "${CRYPTTAB}"
+    chmod 0644 "${CRYPTTAB}"
+    note "Backed up the previous ${CRYPTTAB} to ${CRYPTTAB_BACKUP}"
+}
+
+sync_initramfs() {
+    if crypttab_is_tracked; then
+        note "${CRYPTTAB} is already tracked; re-syncing it into a new deployment."
+        rpm-ostree initramfs-etc --force-sync
+    else
+        note "Tracking ${CRYPTTAB} into the initramfs."
+        rpm-ostree initramfs-etc --track="${CRYPTTAB}"
+    fi
+}
+
+cmd_status() {
+    local dev
+    dev="$(find_device)"
+
+    echo "Device:            ${dev}"
+    echo "crypttab entry:    $(crypttab_entry)"
+    echo
+    echo "Enrolled slots:"
+    enrolled_slots "${dev}" | sed 's/^/  /'
+    echo
+
+    if initramfs_has_fido2; then
+        echo "initramfs fido2:   present"
+    else
+        echo "initramfs fido2:   MISSING"
+    fi
+
+    if crypttab_is_tracked; then
+        echo "crypttab tracked:  yes"
+    else
+        echo "crypttab tracked:  no (FIDO2 unlock will not work at boot)"
+    fi
+
+    if [[ -f "${RECOVERY_FILE}" ]]; then
+        echo
+        warn "${RECOVERY_FILE} still exists. Copy it off this machine and shred it:"
+        echo "         sudo shred -u ${RECOVERY_FILE}" >&2
+    fi
+}
+
+cmd_enroll() {
+    require_root
+    require_ostree
+
+    local dev
+    dev="$(find_device)"
+    note "Encrypted root: ${dev}"
+
+    luks_is_v2 "${dev}" ||
+        die "${dev} is not LUKS2. systemd-cryptenroll stores its metadata in the LUKS2 JSON token area and cannot work here."
+
+    token_present ||
+        die "no FIDO2 token detected. Plug in exactly one YubiKey and try again (systemd-cryptenroll --fido2-device=list)."
+
+    if enrolled_slots "${dev}" | grep -qi 'tpm2'; then
+        warn "this volume also has a TPM2 enrollment. The TPM unlocks silently at"
+        warn "boot and will win over the YubiKey. Run 'ujust remove-luks-tpm-unlock'"
+        warn "if you want to be prompted for the token instead."
+    fi
+
+    # 1. Recovery key first. Losing or resetting the YubiKey must not be able to
+    #    cost you the volume, and the user should walk away with it in hand.
+    #
+    #    It goes to a temporary file that is only moved into place once it is
+    #    known to be non-empty: `>` truncates on open, so enrolling straight
+    #    into RECOVERY_FILE would leave an empty file behind on failure, and the
+    #    next run would then cheerfully "reuse" it.
+    if [[ -s "${RECOVERY_FILE}" ]]; then
+        note "Reusing the existing recovery key at ${RECOVERY_FILE}"
+    else
+        note "Enrolling a recovery key. You will be asked for your current LUKS passphrase."
+        install -d -m 0700 "${RECOVERY_DIR}"
+
+        local tmp
+        tmp="$(mktemp "${RECOVERY_DIR}/.recovery.XXXXXX")"
+        # shellcheck disable=SC2064 # expand tmp now, it never changes
+        trap "rm -f '${tmp}'" EXIT
+
+        if ! (umask 077 && systemd-cryptenroll --recovery-key "${dev}" >"${tmp}"); then
+            die "recovery key enrollment failed; nothing has been changed."
+        fi
+        [[ -s "${tmp}" ]] || die "recovery key enrollment produced no output; nothing has been changed."
+
+        mv "${tmp}" "${RECOVERY_FILE}"
+        chmod 0600 "${RECOVERY_FILE}"
+        trap - EXIT
+    fi
+
+    echo
+    echo "################################################################"
+    echo "# RECOVERY KEY -- write this down or photograph it NOW.        #"
+    echo "# It lives on the encrypted disk, so it is useless to you      #"
+    echo "# unless you copy it somewhere else.                           #"
+    echo "################################################################"
+    cat "${RECOVERY_FILE}"
+    echo "################################################################"
+    echo
+
+    local answer
+    read -r -p "Type YES once you have stored the recovery key off this machine: " answer
+    [[ "${answer}" == "YES" ]] || die "aborted. The recovery key is enrolled; the FIDO2 token is not."
+
+    # 2. Enroll the token. --wipe-slot=fido2 makes re-running idempotent and is
+    #    applied *after* the new slot is created, so a failure here is not
+    #    destructive. The passphrase slot is never in scope.
+    note "Enrolling the FIDO2 token. You will be asked for your LUKS passphrase,"
+    note "then for the token PIN, then to touch the key."
+    systemd-cryptenroll --wipe-slot=fido2 --fido2-device=auto "${dev}" ||
+        die "FIDO2 enrollment failed; ${CRYPTTAB} and the initramfs are untouched."
+
+    # 3. Prove it works before touching anything boot-critical.
+    note "Verifying the enrollment by unlocking ${dev} offline. Touch the key again."
+    if "${SYSTEMD_CRYPTSETUP}" attach "${TEST_MAPPER}" "${dev}" none fido2-device=auto; then
+        "${SYSTEMD_CRYPTSETUP}" detach "${TEST_MAPPER}" || true
+        note "Offline unlock succeeded."
+    else
+        "${SYSTEMD_CRYPTSETUP}" detach "${TEST_MAPPER}" 2>/dev/null || true
+        die "offline unlock failed. Leaving ${CRYPTTAB} and the initramfs alone. Run 'ujust luks-fido2-status' to inspect."
+    fi
+
+    # 4. Only now touch boot configuration.
+    local entry name source keyfile options
+    entry="$(crypttab_entry)"
+    # shellcheck disable=SC2034 # keyfile is read for its position in the line
+    read -r name source keyfile options <<<"${entry}"
+    : "${options:=}"
+
+    local new_opts
+    new_opts="$(merge_options "${options}")"
+    note "New ${CRYPTTAB} options: ${new_opts}"
+    write_crypttab_options "${new_opts}"
+
+    if ! initramfs_has_fido2; then
+        warn "the running initramfs does not appear to contain the dracut fido2 module."
+        warn "Boot unlock will fall back to the passphrase. Check that ublue-os-luks"
+        warn "is installed and that /usr/lib/dracut/dracut.conf.d/90-ublue-luks.conf exists."
+    fi
+
+    sync_initramfs
+
+    cat <<EOF
+
+Done. A new deployment has been staged.
+
+  * Reboot to use it:            systemctl reboot
+  * If boot fails, the LUKS passphrase still works, and you can pick the
+    previous deployment from the boot menu or run: rpm-ostree rollback
+  * Undo everything:             ujust remove-luks-fido2-unlock
+  * Shred the on-disk copy of the recovery key once you have it elsewhere:
+        sudo shred -u ${RECOVERY_FILE}
+EOF
+}
+
+cmd_remove() {
+    require_root
+    require_ostree
+
+    local dev
+    dev="$(find_device)"
+    note "Encrypted root: ${dev}"
+
+    if enrolled_slots "${dev}" | grep -qi 'fido2'; then
+        note "Wiping the FIDO2 keyslot."
+        systemd-cryptenroll --wipe-slot=fido2 "${dev}" ||
+            warn "could not wipe the FIDO2 slot; continuing with the boot configuration."
+    else
+        note "No FIDO2 keyslot enrolled."
+    fi
+
+    if [[ -f "${CRYPTTAB_BACKUP}" ]]; then
+        note "Restoring ${CRYPTTAB} from ${CRYPTTAB_BACKUP}"
+        cp -a "${CRYPTTAB_BACKUP}" "${CRYPTTAB}"
+        rm -f "${CRYPTTAB_BACKUP}"
+    else
+        warn "no ${CRYPTTAB_BACKUP} found; leaving ${CRYPTTAB} as it is."
+    fi
+
+    if crypttab_is_tracked; then
+        note "Untracking ${CRYPTTAB} from the initramfs."
+        rpm-ostree initramfs-etc --untrack="${CRYPTTAB}"
+    else
+        note "${CRYPTTAB} is not tracked; nothing to untrack."
+    fi
+
+    cat <<EOF
+
+Done. Reboot to apply: systemctl reboot
+
+The recovery key, if you enrolled one, is still valid. Wipe it with:
+    sudo systemd-cryptenroll --wipe-slot=recovery ${dev}
+EOF
+}
+
+usage() {
+    cat <<EOF
+Usage: ${0##*/} {enroll|remove|status}
+
+  enroll   Enroll a FIDO2 token as a LUKS unlock method and wire up the initramfs.
+  remove   Wipe the FIDO2 keyslot and revert the boot configuration.
+  status   Show the current enrollment and initramfs state.
+EOF
+}
+
+case "${1:-}" in
+enroll) cmd_enroll ;;
+remove) cmd_remove ;;
+status) cmd_status ;;
+*)
+    usage >&2
+    exit 1
+    ;;
+esac

@@ -21,6 +21,21 @@ niri-init-config:
   fi
   echo "Done. Run 'niri validate' to check the result."
 
+# Enroll a YubiKey (FIDO2) as a LUKS unlock method for the encrypted root.
+setup-luks-fido2-unlock:
+  #!/usr/bin/env bash
+  sudo /usr/libexec/nirigo-luks-fido2 enroll
+
+# Wipe the FIDO2 keyslot and revert the boot configuration.
+remove-luks-fido2-unlock:
+  #!/usr/bin/env bash
+  sudo /usr/libexec/nirigo-luks-fido2 remove
+
+# Show the current FIDO2 enrollment and initramfs state.
+luks-fido2-status:
+  #!/usr/bin/env bash
+  sudo /usr/libexec/nirigo-luks-fido2 status
+
 install-nix-disable-composefs:
   #!/usr/bin/env bash
   sudo rpm-ostree kargs --append='ostree.prepare-root.composefs=0' --reboot

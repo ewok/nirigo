@@ -148,6 +148,169 @@ FUSE v2 is layered back in deliberately — Fedora Atomic
 If you would rather not have the setuid `fusermount` around, drop `fuse` from
 `recipe.yml` and run AppImages with `--appimage-extract-and-run` instead.
 
+## YubiKey
+
+The YubiKey guards two things on this image: the **LUKS root volume at boot**
+and the **swaylock screen lock**. SDDM login, `sudo` and polkit deliberately
+stay password-only.
+
+| Package | Use |
+| --- | --- |
+| `pam-u2f` | `pam_u2f.so`, used by `/etc/pam.d/swaylock` |
+| `pamu2fcfg` | Registers a key into a mapping file |
+| `fido2-tools` | `fido2-token`, to set or change the token PIN |
+| `yubikey-manager` | `ykman`, general key management |
+
+`systemd-cryptenroll` and `systemd-cryptsetup` come from the `systemd` package;
+Fedora has no separate `systemd-cryptsetup` subpackage, and `libfido2` is
+already in the base image as a dependency of `openssh-clients`.
+
+### Screen lock
+
+`/etc/pam.d/swaylock` is already configured:
+
+```
+auth sufficient   pam_u2f.so cue
+auth include      login
+```
+
+`sufficient` means the key unlocks the screen on its own, and a failed or
+missing key falls through to the normal password prompt. Register your key
+first, otherwise `pam_u2f` has nothing to match against:
+
+```
+pamu2fcfg -u "$USER" -o pam://nirigo -i pam://nirigo > ~/.config/Yubico/u2f_keys
+```
+
+Set the origin and appid explicitly (as above) rather than relying on the
+default `pam://$HOSTNAME` — the hostname can change on a DHCP network and the
+key then stops matching.
+
+### LUKS unlock at boot
+
+```
+ujust setup-luks-fido2-unlock
+```
+
+This enrolls the token with `systemd-cryptenroll --fido2-device=auto`, which by
+default requires **both** the token PIN and a physical touch. Your existing LUKS
+passphrase is never removed and remains the fallback.
+
+The recipe does four things the equivalent upstream scripts do not:
+
+1. Enrolls a **recovery key first** and refuses to continue until you confirm
+   you have copied it off the machine. Losing or resetting a YubiKey must not
+   be able to cost you the volume.
+2. **Proves the enrollment works offline** with `systemd-cryptsetup attach`
+   before touching anything boot-critical. If that fails, nothing is changed.
+3. Writes a well-formed four-field `/etc/crypttab` line and keeps a backup at
+   `/etc/crypttab.nirigo-fido2.bak`.
+4. Uses `rpm-ostree initramfs-etc --track=/etc/crypttab` instead of
+   `rpm-ostree initramfs --enable`, so no dracut run is added to every future
+   upgrade.
+
+That last point is the non-obvious part. dracut only copies `/etc/crypttab`
+into the initramfs in *hostonly* mode, and this image builds its initramfs with
+`--no-hostonly` (see `files/scripts/installkernel.sh`). The initrd therefore has
+no crypttab at all and unlocks root purely from the `rd.luks.uuid=` kernel
+argument — editing `/etc/crypttab` by hand does nothing for boot. `initramfs-etc`
+injects the file and re-syncs it into every new deployment.
+
+The dracut `fido2` module is already present: the base image ships
+`ublue-os-luks`, which drops in
+`/usr/lib/dracut/dracut.conf.d/90-ublue-luks.conf` with
+`add_dracutmodules+=" fido2 tpm2-tss pkcs11 pcsc "`. The recipe verifies this
+rather than assuming it.
+
+To inspect or undo:
+
+```
+ujust luks-fido2-status
+ujust remove-luks-fido2-unlock
+```
+
+Caveats:
+
+* **Only single-volume setups.** The script refuses to guess if `/etc/crypttab`
+  has more than one entry.
+* **LUKS2 only.** `systemd-cryptenroll` stores its metadata in the LUKS2 JSON
+  token area.
+* **TPM2 wins.** If you have also run `ujust setup-luks-tpm-unlock` (from
+  `ublue-os-just`), the TPM unlocks silently at boot and you will never be asked
+  for the token. Remove one or the other.
+* **Recovery.** If boot breaks, the passphrase prompt still works, and the
+  previous deployment is one `rpm-ostree rollback` away.
+* Only genuine FIDO2 authenticators work (YubiKey 5 / Bio / Security Key).
+  U2F-only keys such as the YubiKey 4 series have no `hmac-secret` extension.
+
+## Screen locking and suspend
+
+wayblue installs `swaylock` and `swayidle` for the niri image but wires up
+neither — its sway and hyprland images ship a config, niri got nothing — so
+stock wayblue niri suspends straight to an unlocked session.
+
+This image adds `nirigo-swayidle.service`, a user unit enabled for all users:
+
+```
+/usr/bin/swayidle -w before-sleep '/usr/bin/swaylock -f'
+```
+
+`-w` is the entire point. swayidle takes a logind *delay* inhibitor and blocks
+until `swaylock -f` reports the screen locked before releasing it, so the lock
+is guaranteed to be up before the machine sleeps. Without it the suspend races
+the locker.
+
+`/etc/systemd/logind.conf.d/inhibit-delay.conf` raises `InhibitDelayMaxSec` from
+its 5 s default to 10 s. Once that cap elapses logind suspends regardless, so a
+slow locker on a loaded handheld would otherwise leave you resuming unlocked.
+
+Check it is running with `systemctl --user status nirigo-swayidle.service`.
+
+Only lock-on-suspend is configured. If you also want an idle timeout, or want
+`loginctl lock-session` to actually do something (swaylock itself ignores
+logind's `Lock` signal, so without a swayidle handler that command is a no-op),
+drop in your own unit or extend the command line:
+
+```
+swayidle -w \
+    timeout 300 'swaylock -f' \
+    timeout 360 'niri msg action power-off-monitors' \
+    before-sleep 'swaylock -f' \
+    lock 'swaylock -f' \
+    unlock 'pkill -u "$USER" -USR1 swaylock'
+```
+
+## Keyring
+
+`gnome-keyring` is installed and `/etc/niri/config.d/30-session.kdl` starts it
+with `gnome-keyring-daemon --start --components=secrets`. That spawn is not
+redundant: PAM starts `gnome-keyring-daemon --login` at login, and that process
+exits if nothing connects it to the session bus within a few minutes.
+
+Auto-unlock at login is handled by PAM, not by the compositor. Fedora's stock
+`/etc/pam.d/sddm` already carries the two lines that do it:
+
+```
+-auth    optional  pam_gnome_keyring.so
+-session optional  pam_gnome_keyring.so auto_start
+```
+
+Verify with `grep gnome_keyring /etc/pam.d/sddm /etc/pam.d/passwd`. The `auth`
+module stashes the password you typed, the `session` module uses it to decrypt
+the `login` keyring. **This only works if the `login` keyring password equals
+your account password.** If they have drifted apart, open Seahorse, right-click
+the `login` keyring and change its password to match. `pam_gnome_keyring` in
+`/etc/pam.d/passwd` keeps them in sync afterwards.
+
+> **Warning**
+> Do not add `pam_u2f.so` as `sufficient` to `/etc/pam.d/sddm`. A FIDO2
+> assertion is not a password, so `PAM_AUTHTOK` is never set and
+> `pam_gnome_keyring` has nothing to unlock the keyring with — you would get a
+> manual keyring prompt the first time any app asks for a secret. This is the
+> same failure mode as fingerprint login. That is why SDDM on this image stays
+> password-only. If you want the YubiKey at login anyway, add it as a
+> `required` second factor *after* `password-auth`, not as `sufficient`.
+
 ## Post-install
 
 If you want to install Bazzite-arch in distrobox(to run Steam):

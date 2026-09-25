@@ -48,6 +48,13 @@ modules:
       - pam-u2f
       - pamu2fcfg
       - yubikey-manager
+      # FIDO2 CLI (fido2-token/-cred/-assert), needed to set or change the
+      # YubiKey PIN that guards the LUKS keyslot. libfido2 itself is NOT listed:
+      # it is a hard dependency of openssh-clients and already in the base, so
+      # naming it would abort the build. systemd-cryptenroll and
+      # systemd-cryptsetup come from the systemd package -- Fedora has no
+      # separate systemd-cryptsetup subpackage.
+      - fido2-tools
       - podman-compose
       # FUSE userspace filesystems. fuse3/fuse-common/fuse3-libs,
       # fuse-overlayfs and the whole gvfs stack (including gvfs-mtp and
@@ -102,6 +109,16 @@ modules:
     files:
       - source: system
         destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
+
+  # Must run after the files module: nirigo-swayidle.service is shipped through
+  # files/system/usr/lib/systemd/user/ rather than the systemd module's own
+  # files/systemd/user/ directory, so the unit does not exist until the files
+  # module has run. `user:` enables with `systemctl --global`, which wants it
+  # on disk already.
+  - type: systemd
+    user:
+      enabled:
+        - nirigo-swayidle.service
 
   # Must run after the files module: builds the niri include chain from
   # /usr/etc/niri/config.d/ and validates the resulting config.
