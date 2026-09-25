@@ -21,10 +21,10 @@ modules:
   - type: script
     scripts:
       - installkernel.sh
+      - ublue-acpi_call.sh
       - allow-nix.sh
       # - patch-mt7xxx.sh
       # - xpad.sh
-      # - ublue-acpi_call.sh
 
   - type: rpm-ostree
     repos:

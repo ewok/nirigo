@@ -1,47 +1,39 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 
-# Tell build process to exit if there are any errors.
-set -oue pipefail
+# Build HHD's ACPI interface for the image kernel, never the build host's kernel.
+# installkernel.sh must run first to provide the matching kernel-devel package.
+set -Eeuo pipefail
 
-ln -sf /usr/bin/ld.bfd /etc/alternatives/ld && ln -sf /etc/alternatives/ld /usr/bin/ld
-
-# Récupération des variables cibles
-ARCH=$(rpm -E '%_arch')
-KERNEL=$(rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}')
-RELEASE=$(rpm -E '%fedora')
-
-echo "Kernel module folder :"
-ls /usr/lib/modules/
-
-echo "Kernel SRC folder :"
-ls /usr/src/kernels/
-
-echo "LD path :"
-find /usr -name ld
-which ld
-
-# Cloner le dépôt
-git clone https://github.com/nix-community/acpi_call.git /tmp/acpi_call
-
-# Aller dans le répertoire cloné
-cd /tmp/acpi_call
-
-# Compiler le module pour le noyau cible
-make -C /usr/src/kernels/${KERNEL} M=$(pwd) modules
-
-# Vérifier si la compilation a réussi
-if [ $? -ne 0 ]; then
-    echo "Erreur lors de la compilation du module acpi_call."
+KERNEL="$(rpm -q --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}\n' kernel-core)"
+if [[ -z "$KERNEL" || "$KERNEL" == *$'\n'* || ! -d "/usr/src/kernels/$KERNEL" ]]; then
+    printf 'Expected one installed kernel with matching headers; got: %s\n' "$KERNEL" >&2
     exit 1
 fi
 
-# Déplacer le module au bon emplacement
-mkdir -p /usr/lib/modules/${KERNEL}/extra/acpi_call/
-mv acpi_call.ko /usr/lib/modules/${KERNEL}/extra/acpi_call/
+# Some kernel builds already provide the module. Preserve that copy if present.
+if ! modinfo -k "$KERNEL" acpi_call >/dev/null 2>&1; then
+    dnf -y install git gcc make binutils elfutils-libelf-devel openssl-devel kmod
 
+    BUILD_DIR="$(mktemp -d /tmp/acpi-call.XXXXXX)"
+    trap 'rm -rf -- "$BUILD_DIR"' EXIT
 
-# Mettre à jour les dépendances du module pour le noyau spécifié
-depmod -a ${KERNEL}
+    # Pin the source so an upstream change cannot silently alter an image build.
+    SOURCE_REVISION=6ad1e676dbfb5dcb1ec1f973c10ef5c57ffb4069
+    git init "$BUILD_DIR"
+    git -C "$BUILD_DIR" remote add origin https://github.com/nix-community/acpi_call.git
+    git -C "$BUILD_DIR" fetch --depth=1 origin "$SOURCE_REVISION"
+    git -C "$BUILD_DIR" checkout --detach FETCH_HEAD
 
-# Afficher un message de confirmation
-echo "Le module acpi_call a été compilé et déplacé avec succès pour le noyau ${KERNEL}."
+    # Select the linker locally rather than modifying system alternatives.
+    make -C "/usr/src/kernels/$KERNEL" M="$BUILD_DIR" LD=ld.bfd modules
+    install -Dm0644 "$BUILD_DIR/acpi_call.ko" \
+        "/usr/lib/modules/$KERNEL/extra/acpi_call/acpi_call.ko"
+fi
+
+depmod -a "$KERNEL"
+VERMAGIC="$(modinfo -k "$KERNEL" -F vermagic acpi_call)"
+if [[ "${VERMAGIC%% *}" != "$KERNEL" ]]; then
+    printf 'acpi_call kernel mismatch: expected %s, got %s\n' "$KERNEL" "$VERMAGIC" >&2
+    exit 1
+fi
+printf 'acpi_call is installed for %s\n' "$KERNEL"
