@@ -43,6 +43,29 @@ dms-setup:
 dms-greeter-sync:
   dms-greeter sync
 
+# Link the image-owned plugin so updates follow the installed image.
+dms-tdp-setup:
+  #!/usr/bin/env bash
+  set -Eeuo pipefail
+  source=/usr/share/nirigo/dms-plugins/LegionGoTdp
+  plugins="${XDG_CONFIG_HOME:-$HOME/.config}/DankMaterialShell/plugins"
+  target="$plugins/LegionGoTdp"
+  if [[ ! -f "$source/plugin.json" ]]; then
+    printf 'error: %s is missing; update to an image with the TDP plugin.\n' "$source" >&2
+    exit 1
+  fi
+  mkdir -p -- "$plugins"
+  if [[ -L "$target" && $(readlink -- "$target") == "$source" ]]; then
+    printf 'Legion Go TDP is already linked.\n'
+  elif [[ -e "$target" || -L "$target" ]]; then
+    printf 'error: %s already exists; move it aside before installing.\n' "$target" >&2
+    exit 1
+  else
+    ln -sT -- "$source" "$target"
+  fi
+  printf 'In DMS Settings → Plugins, scan and enable Legion Go TDP.\n'
+  printf 'Add it to your DankBar layout and Control Center widgets.\n'
+
 # Enroll a YubiKey (FIDO2) as a LUKS unlock method for the encrypted root.
 setup-luks-fido2-unlock:
   #!/usr/bin/env bash

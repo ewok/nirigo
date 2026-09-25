@@ -314,6 +314,41 @@ configure AC/battery idle timeouts there. Test a suspend/resume cycle before
 relying on the new configuration. The power button still requests suspend
 through logind, and `InhibitDelayMaxSec=10` remains configured.
 
+## Legion Go TDP widget
+
+The bundled **Legion Go TDP** plugin (DMS 1.6+) provides both a DankBar widget
+and a Control Center tile. Install the per-user link once:
+
+```bash
+ujust dms-tdp-setup
+```
+
+In **Settings → Plugins**, scan for plugins and enable **Legion Go TDP**. Add
+it to your DankBar layout and Control Center widgets, then run `dms restart`
+if it does not appear. The link points to `/usr/share/nirigo/dms-plugins/LegionGoTdp`,
+so plugin updates follow image updates. The helper respects `XDG_CONFIG_HOME`
+and refuses to overwrite an existing local plugin.
+
+Click or tap either surface to cycle **Quiet → Balanced → Performance → Custom
+→ Quiet**. The horizontal bar shows the profile name; vertical bars use
+**Q/B/P/C**. Right-click the bar widget to refresh immediately. Both surfaces
+share state and refresh every five seconds while a widget instance is loaded,
+including changes made with the existing keyboard shortcut or HHD.
+
+The plugin calls `sudo -n /usr/libexec/rotatetdp.sh [rotate]` using the image's
+existing sudoers rule. It displays profile names, not wattage. Failed reads
+show **Unavailable**; failed switches show a DMS error toast. To diagnose:
+
+```bash
+sudo -n /usr/libexec/rotatetdp.sh
+```
+
+For development, link `files/system/usr/share/nirigo/dms-plugins/LegionGoTdp`
+from your checkout into your DMS plugins directory instead, and restart DMS
+after changing the shared QML singleton. On-device smoke checks: add both
+surfaces, cycle all four profiles, change the profile through HHD, and verify
+the unavailable state and recovery when HHD is stopped and restarted.
+
 ## Keyring
 
 `gnome-keyring` is installed and `/etc/niri/config.d/30-session.kdl` starts it
@@ -373,6 +408,15 @@ bats tests/migration.bats
 shellcheck files/scripts/check-niri-config-drift.sh files/scripts/remove-packages.sh \
   files/scripts/niri-dropins.sh files/system/usr/libexec/rotatetdp.sh tests/migration.bats
 ```
+
+TDP plugin backend and installation-helper checks (requires Node.js):
+
+```bash
+node --test tests/dms-tdp.test.cjs
+```
+
+These exercise backend logic with process doubles; QML loading and UI behavior
+require the DMS/device smoke checks in the TDP widget section.
 
 The image build additionally checks the pinned stock template and runs
 `niri validate` on both the assembled desktop config and the greeter config.

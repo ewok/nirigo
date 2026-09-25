@@ -1,0 +1,12 @@
+{
+  "id": "legionGoTdp",
+  "name": "Legion Go TDP",
+  "description": "Show and cycle HHD TDP profiles from DankBar and Control Center.",
+  "version": "1.0.0",
+  "author": "nirigo",
+  "icon": "speed",
+  "type": "widget",
+  "capabilities": ["dankbar-widget", "control-center"],
+  "component": "./LegionGoTdp.qml",
+  "requires_dms": ">=1.6.0"
+}
