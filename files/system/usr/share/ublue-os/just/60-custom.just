@@ -43,10 +43,59 @@ dms-setup:
 dms-greeter-sync:
   dms-greeter sync
 
-# Link the image-owned plugin so updates follow the installed image.
+# Initialize the system daemon for the desktop user and verify Legion Go TDP.
+hhd-setup:
+  #!/usr/bin/env bash
+  set -Eeuo pipefail
+  if [[ $(id -u) == 0 ]]; then
+    printf 'Run ujust hhd-setup as your desktop user, without sudo. It requests sudo when needed.\n' >&2
+    exit 1
+  fi
+  user=$(id -un)
+  # Upstream passes %i (not unescaped %I) to --user; preserve username hyphens.
+  unit="hhd@$user.service"
+  diagnostics() {
+    printf 'Inspect HHD with: systemctl status %q\n' "$unit" >&2
+    printf 'Read its logs with: sudo journalctl -b -u %q --no-pager -n 80\n' "$unit" >&2
+  }
+  # HHD instances share the API socket and controller devices.
+  active=$(systemctl list-units --all --plain --no-legend --no-pager --state=active,activating,reloading,deactivating 'hhd*.service')
+  enabled=$(systemctl list-unit-files --no-legend --no-pager --state=enabled,enabled-runtime 'hhd*.service')
+  while read -r other _; do
+    if [[ -n "$other" && "$other" != "$unit" ]]; then
+      printf 'error: %s is active or enabled; disable that HHD instance before setting up %s.\n' "$other" "$unit" >&2
+      exit 1
+    fi
+  done <<<"$active
+  $enabled"
+  if ! sudo systemctl enable --now "$unit"; then
+    diagnostics
+    exit 1
+  fi
+  # Type=simple may be active before the API and device plugins are ready.
+  for ((attempt=0; attempt<15; attempt++)); do
+    if mode=$(sudo -n timeout 2s hhdctl get tdp.lenovo.tdp.mode --values 2>&1); then
+      case "$mode" in
+        quiet|balanced|performance|custom)
+          printf 'HHD enabled and ready. Current TDP profile: %s\n' "$mode"
+          exit 0
+          ;;
+      esac
+    fi
+    sleep 1
+  done
+  printf 'error: HHD did not provide a valid Legion Go TDP profile. Last response: %s\n' "$mode" >&2
+  diagnostics
+  exit 1
+
+# Start HHD and link the image-owned plugin so updates follow the installed image.
 dms-tdp-setup:
   #!/usr/bin/env bash
   set -Eeuo pipefail
+  if [[ $(id -u) == 0 ]]; then
+    printf 'Run ujust dms-tdp-setup as your desktop user, without sudo.\n' >&2
+    exit 1
+  fi
   source=/usr/share/nirigo/dms-plugins/LegionGoTdp
   plugins="${XDG_CONFIG_HOME:-$HOME/.config}/DankMaterialShell/plugins"
   target="$plugins/LegionGoTdp"
@@ -54,13 +103,15 @@ dms-tdp-setup:
     printf 'error: %s is missing; update to an image with the TDP plugin.\n' "$source" >&2
     exit 1
   fi
-  mkdir -p -- "$plugins"
   if [[ -L "$target" && $(readlink -- "$target") == "$source" ]]; then
     printf 'Legion Go TDP is already linked.\n'
   elif [[ -e "$target" || -L "$target" ]]; then
     printf 'error: %s already exists; move it aside before installing.\n' "$target" >&2
     exit 1
-  else
+  fi
+  ujust hhd-setup
+  mkdir -p -- "$plugins"
+  if [[ ! -L "$target" ]]; then
     ln -sT -- "$source" "$target"
   fi
   printf 'In DMS Settings → Plugins, scan and enable Legion Go TDP.\n'

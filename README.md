@@ -186,7 +186,7 @@ setup. On top of that this image adds:
 | `fuse-sshfs` | `sshfs user@host:/path ~/mnt/host` |
 | `rclone` | `rclone mount remote: ~/mnt/remote` for Drive/S3/B2/… |
 | `gocryptfs` | Encrypted directories, e.g. `gocryptfs ~/.vault ~/vault` |
-| `fuse` (v2) | `libfuse.so.2`, needed by AppImages |
+| `fuse` / `fuse-libs` (v2) | AppImage mount helper and `libfuse.so.2` |
 
 `/etc/fuse.conf` sets `user_allow_other` so `-o allow_other` /
 `--allow-other` work without root.
@@ -317,11 +317,19 @@ through logind, and `InhibitDelayMaxSec=10` remains configured.
 ## Legion Go TDP widget
 
 The bundled **Legion Go TDP** plugin (DMS 1.6+) provides both a DankBar widget
-and a Control Center tile. Install the per-user link once:
+and a Control Center tile. Initialize HHD and install the per-user link with
+one command, run as your desktop user (without `sudo`):
 
 ```bash
 ujust dms-tdp-setup
 ```
+
+The helper calls `ujust hhd-setup`, which requests sudo to enable and start
+`hhd@<your-username>.service` at boot, then retries the TDP read for up to about
+45 seconds. It prints the current profile on success or diagnostic commands on
+failure. It refuses to start a competing instance if another HHD service is
+active or enabled. Both commands can be rerun; `ujust hhd-setup` also works
+on its own when you only need the daemon.
 
 In **Settings → Plugins**, scan for plugins and enable **Legion Go TDP**. Add
 it to your DankBar layout and Control Center widgets, then run `dms restart`
@@ -348,6 +356,29 @@ from your checkout into your DMS plugins directory instead, and restart DMS
 after changing the shared QML singleton. On-device smoke checks: add both
 surfaces, cycle all four profiles, change the profile through HHD, and verify
 the unavailable state and recovery when HHD is stopped and restarted.
+
+### HHD UI: `libfuse.so.2` missing
+
+The upstream `hhd-ui` RPM installs an AppImage as `/usr/bin/hhd-ui`. Older
+AppImage runtimes need the FUSE 2 library, `libfuse.so.2`, supplied by Fedora's
+`fuse-libs`. FUSE 3 does not provide this ABI. The image recipe explicitly installs
+both `fuse-libs` and `fuse` (the AppImage mount helper).
+This UI dependency is separate from the HHD daemon/API socket.
+
+Check the **booted host**, outside distrobox/toolbox:
+
+```bash
+rpm -q hhd-ui fuse fuse-libs
+rpm -q --whatprovides 'libfuse.so.2()(64bit)'
+rpm-ostree status
+```
+
+If the library is missing, update to a build containing the FUSE package and
+reboot (`rpm-ostree upgrade`, then `systemctl reboot`). For an older image
+without the library, `sudo rpm-ostree install fuse-libs` followed by a reboot
+provides it. If the package is already installed but the error persists, check
+`rpm -V fuse-libs` and `command -v hhd-ui` and capture the full launch error.
+Enabling HHD alone cannot fix a missing AppImage library.
 
 ## Keyring
 

@@ -66,8 +66,8 @@ modules:
       - gocryptfs
       # FUSE v2. Fedora Atomic drops fuse/fuse-libs on purpose
       # (https://fedoraproject.org/wiki/Changes/AtomicDesktopDropFuse2) but
-      # AppImages still want libfuse.so.2. Listing `fuse` pulls in fuse-libs as
-      # a dependency; naming fuse-libs explicitly is not needed.
+      # AppImages need the mount helper and libfuse.so.2. The library is
+      # explicitly installed through DNF below, even if already in the base.
       - fuse
 
   # DNF tolerates dependencies already provided by the base image.
@@ -79,6 +79,9 @@ modules:
     install:
       install-weak-deps: false
       packages:
+        # Older hhd-ui AppImage runtimes dynamically load libfuse.so.2.
+        # Require it explicitly rather than relying on transitive dependencies.
+        - fuse-libs
         - quickshell
         - dms
         - dms-greeter
