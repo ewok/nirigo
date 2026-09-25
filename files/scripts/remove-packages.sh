@@ -32,6 +32,9 @@ PACKAGES=(
     xfce-polkit
     sddm
     sddm-themes
+    # Fedora's Wayland session subpackage requires sddm at the same version.
+    # Remove it in the same transaction as the display manager.
+    sddm-wayland-generic
     sddm-wayland-sway
     kwallet
     pam-kwallet
