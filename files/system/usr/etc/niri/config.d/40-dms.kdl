@@ -1,0 +1,36 @@
+// DMS starts through dms.service; never also spawn it here.
+environment {
+    QT_QPA_PLATFORM "wayland"
+    ELECTRON_OZONE_PLATFORM_HINT "auto"
+}
+
+layer-rule {
+    match namespace="^quickshell$"
+    place-within-backdrop true
+}
+layer-rule {
+    match namespace="^dms:blurwallpaper$"
+    place-within-backdrop true
+}
+
+spawn-at-startup "wl-paste" "--watch" "cliphist" "store"
+
+binds {
+    Mod+T hotkey-overlay-title="Terminal" { spawn "ghostty"; }
+    Mod+D hotkey-overlay-title="Launcher" { spawn "dms" "ipc" "call" "spotlight" "toggle"; }
+    Mod+Space hotkey-overlay-title="Launcher" { spawn "dms" "ipc" "call" "spotlight" "toggle"; }
+    Mod+V hotkey-overlay-title="Clipboard" { spawn "dms" "ipc" "call" "clipboard" "toggle"; }
+    Mod+M hotkey-overlay-title="Processes" { spawn "dms" "ipc" "call" "processlist" "focusOrToggle"; }
+    Mod+Comma hotkey-overlay-title="Settings" { spawn "dms" "ipc" "call" "settings" "focusOrToggle"; }
+    Mod+N hotkey-overlay-title="Notifications" { spawn "dms" "ipc" "call" "notifications" "toggle"; }
+    Mod+Y hotkey-overlay-title="Wallpapers" { spawn "dms" "ipc" "call" "dankdash" "wallpaper"; }
+    Super+Alt+L hotkey-overlay-title="Lock" { spawn "dms" "ipc" "call" "lock" "lock"; }
+    Mod+Ctrl+T hotkey-overlay-title="Rotate Legion Go TDP" {
+        spawn-sh "mode=$(sudo -n /usr/libexec/rotatetdp.sh rotate) && notify-send 'Legion Go TDP' \"$mode\"";
+    }
+    XF86AudioRaiseVolume allow-when-locked=true { spawn "dms" "ipc" "call" "audio" "increment" "3"; }
+    XF86AudioLowerVolume allow-when-locked=true { spawn "dms" "ipc" "call" "audio" "decrement" "3"; }
+    XF86AudioMute allow-when-locked=true { spawn "dms" "ipc" "call" "audio" "mute"; }
+    XF86MonBrightnessUp allow-when-locked=true { spawn "dms" "ipc" "call" "brightness" "increment" "5" ""; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn "dms" "ipc" "call" "brightness" "decrement" "5" ""; }
+}

@@ -1,0 +1,10 @@
+// Separate compositor for login; never include the desktop session config.
+hotkey-overlay { skip-at-startup; }
+environment { DMS_RUN_GREETER "1"; }
+gestures { hot-corners { off; }; }
+layout { background-color "#000000"; }
+input {
+    touchpad { tap; natural-scroll; }
+    touch { map-to-output "Lenovo Group Limited Go Display 0x00888888"; }
+    disable-power-key-handling
+}

@@ -21,6 +21,28 @@ niri-init-config:
   fi
   echo "Done. Run 'niri validate' to check the result."
 
+# Explicit migration: back up a personal config before adopting image defaults.
+# Do not run upstream `dms setup`: this image already owns its niri config.
+dms-setup:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  config="${XDG_CONFIG_HOME:-$HOME/.config}/niri/config.kdl"
+  niri validate --config /etc/niri/config.kdl
+  mkdir -p "$(dirname "$config")"
+  if [[ -e "$config" || -L "$config" ]]; then
+    backup=$(mktemp "${config}.pre-dms.XXXXXX")
+    cp -L -- "$config" "$backup"
+    echo "Saved personal config to $backup"
+    rm -- "$config"
+  fi
+  cp /etc/niri/config.kdl "$config"
+  systemctl --user daemon-reload
+  systemctl --user disable --now nirigo-swayidle.service 2>/dev/null || true
+  echo 'DMS configuration installed. Log out and back in to finish switching shells.'
+
+dms-greeter-sync:
+  dms-greeter sync
+
 # Enroll a YubiKey (FIDO2) as a LUKS unlock method for the encrypted root.
 setup-luks-fido2-unlock:
   #!/usr/bin/env bash

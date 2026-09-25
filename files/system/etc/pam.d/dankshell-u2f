@@ -1,0 +1,4 @@
+#%PAM-1.0
+# Match the origin/appid used by the existing nirigo pamu2fcfg enrollment.
+auth required pam_u2f.so cue origin=pam://nirigo appid=pam://nirigo
+account required pam_permit.so

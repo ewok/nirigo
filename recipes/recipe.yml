@@ -70,6 +70,31 @@ modules:
       # a dependency; naming fuse-libs explicitly is not needed.
       - fuse
 
+  # DNF tolerates dependencies already provided by the base image.
+  - type: dnf
+    repos:
+      copr:
+        - avengemedia/danklinux
+        - avengemedia/dms
+    install:
+      install-weak-deps: false
+      packages:
+        - quickshell
+        - dms
+        - dms-greeter
+        - greetd
+        - gnome-keyring-pam
+        - xdg-desktop-portal-gnome
+        - matugen
+        - danksearch
+        - cliphist
+        - cava
+        - material-symbols-fonts
+        - qt6-qtmultimedia
+        - qt6ct-kde
+        - acl
+        - libnotify
+
   # Removals live in a script instead of the module's `remove:` list so that
   # packages missing from the base image don't abort the build.
   - type: script
@@ -110,20 +135,25 @@ modules:
       - source: system
         destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
 
-  # Must run after the files module: nirigo-swayidle.service is shipped through
-  # files/system/usr/lib/systemd/user/ rather than the systemd module's own
-  # files/systemd/user/ directory, so the unit does not exist until the files
-  # module has run. `user:` enables with `systemctl --global`, which wants it
-  # on disk already.
+  # SDDM is disabled before removal; greetd claims display-manager.service.
   - type: systemd
+    system:
+      enabled:
+        - greetd.service
+      masked:
+        - sddm.service
+        - sddm-boot.service
     user:
       enabled:
+        - dms.service
+      masked:
         - nirigo-swayidle.service
 
   # Must run after the files module: builds the niri include chain from
   # /usr/etc/niri/config.d/ and validates the resulting config.
   - type: script
     scripts:
+      - check-niri-config-drift.sh
       - niri-dropins.sh
 
   - type: signing # this sets up the proper policy & signing files for signed images to work fully

@@ -1,6 +1,9 @@
 # Niri on Legion Go
 
-Image based on [Wayblue project](https://github.com/wayblueorg/wayblue) with some tweaks.
+Fedora Atomic image based on [Wayblue](https://github.com/wayblueorg/wayblue),
+with niri, Quickshell and DankMaterialShell (DMS). Login uses greetd with
+DankGreeter. The handheld kernel, HHD and Legion Go input configuration are
+included.
 
 Added HHD with managing TDP via acpi_call.
 
@@ -45,14 +48,68 @@ rpm-ostree rebase ostree-image-signed:docker://ghcr.io/ewok/nirigo:latest
 systemctl reboot
 ```
 
-Pick the **Niri** session in SDDM on the next login. If something goes wrong you
+Pick the **Niri** session in DankGreeter on the next login. If something goes wrong you
 can always `rpm-ostree rollback`, or rebase back to `ghcr.io/ewok/swaygo:latest`.
 
 Then wire the drop-ins into your niri config (see below) and re-check your
 personal keybinds: niri is a scrollable-tiling compositor, so the sway layout
 bindings have no 1:1 equivalent.
 
+## Migrating from the Waybar version of nirigo
+
+The image now replaces Waybar, swaybg, dunst, the launchers, xfce-polkit,
+swaylock and swayidle with DMS. SDDM is replaced by greetd/DankGreeter.
+Audio/network/Bluetooth helper applications remain available.
+
+Personal `~/.config/niri/config.kdl` files are not overwritten by image updates.
+After updating, run `ujust dms-setup` to back up your personal config and adopt
+the new defaults, then log out and back in. Reapply personal changes from the
+printed backup path. Alternatively, merge manually: remove old shell startup
+commands and bindings, remove the manual xwayland-satellite spawn and `DISPLAY`,
+and include `/etc/niri/nirigo.kdl`. Appending the include alone does not remove
+old startup commands. Review any personal systemd or XDG autostart entries too.
+
+For locally modified `/etc` files, OSTree may preserve the old version: compare
+`/etc/niri/config.kdl` with `/usr/etc/niri/config.kdl` before running the helper.
+If the display-manager alias still points to SDDM after an upgrade, run
+`sudo systemctl enable --force greetd.service` and reboot.
+
+| Shortcut | Action |
+| --- | --- |
+| Mod+T | Ghostty |
+| Mod+D / Mod+Space | DMS launcher |
+| Mod+V / Mod+M / Mod+Comma | Clipboard / processes / settings |
+| Mod+N / Mod+Y | Notifications / wallpapers |
+| Super+Alt+L | Lock |
+| Mod+Ctrl+T | Rotate HHD TDP mode and notify |
+| Mod+Ctrl+V | Toggle floating (moved from Mod+V) |
+| Mod+Ctrl+M | Maximize to edges (moved from Mod+M) |
+| Mod+Ctrl+Comma | Consume window into column (moved from Mod+Comma) |
+
+After login, `ujust dms-greeter-sync` optionally synchronizes the login theme.
+The image configures greetd itself; do not run `dms-greeter install/enable` on
+this Atomic image. Password login preserves keyring auto-unlock.
+
+### Verification after updating
+
+Check `systemctl status greetd`, `getent passwd greeter`,
+`systemctl --user status dms`, and `niri validate`. Test touchscreen login,
+notifications, polkit prompts, an X11 app, TDP rotation, lock/unlock and
+lock-before-suspend on the device. Test browser screen sharing and keyring
+auto-unlock. For greeter failures inspect `journalctl -b -u greetd` and
+`sudo ausearch -m avc -ts recent` for SELinux denials.
+The previous deployment can be selected in the boot menu or restored with
+`rpm-ostree rollback`. Inspect `ostree admin status` before choosing which
+deployment index to pin with `sudo ostree admin pin INDEX`.
+
 ## Niri configuration
+
+`files/system/usr/etc/niri/config.kdl` is based on the Fedora 44 niri
+26.04 stock template. `check-niri-config-drift.sh` fails the image build when
+the packaged template checksum changes. Review the new upstream template,
+update the fork and its provenance, then update the checksum in that script.
+The include chain is validated during every image build. Niri starts
+xwayland-satellite on demand; do not manually spawn it or force `DISPLAY`.
 
 niri only reads **one** config file: `~/.config/niri/config.kdl` if it exists,
 otherwise `/etc/niri/config.kdl`. Unlike sway there is no automatic
@@ -63,7 +120,8 @@ includes:
 | --- | --- |
 | `/etc/niri/config.d/10-input.kdl` | Touchpad tap + natural scroll, touchscreen → built-in panel, power key left to logind |
 | `/etc/niri/config.d/20-window-rules.kdl` | Float picture-in-picture players |
-| `/etc/niri/config.d/30-session.kdl` | Start gnome-keyring / kwallet, like the wayblue sway image did |
+| `/etc/niri/config.d/30-session.kdl` | Start the GNOME Keyring secret service |
+| `/etc/niri/config.d/40-dms.kdl` | Shell shortcuts, clipboard history and wallpaper layers |
 | `/etc/niri/nirigo.kdl` | Generated aggregate that includes all of the above |
 
 `/etc/niri/config.kdl` already includes `nirigo.kdl`, so the defaults work out
@@ -103,20 +161,18 @@ the connector name (`eDP-1`) or `"<make> <model> <serial>"`.
 * **Window marks** — niri has no equivalent, so `mark Browser` is gone.
 * **Sticky windows** — niri floating windows live on a single workspace, so
   picture-in-picture is floated but no longer follows you across workspaces.
-* **`sway/mode` and `sway/scratchpad` waybar modules** — niri has neither;
-  the bar now uses `niri/workspaces` and `niri/window`.
+* **`sway/mode` and `sway/scratchpad` modules** — niri has neither;
+  DMS now provides the bar and workspace display.
 * **squeekboard on-screen keyboard** — not packaged in Fedora any more; the
   `XF86Launch6`/`XF86Launch7` bindings and the `us_wide.yaml` layout were
   removed.
 
-### Screen sharing caveat
+### Screen sharing
 
-niri's `niri-portals.conf` prefers `xdg-desktop-portal-gnome`, which wayblue
-does not install (it ships `xdg-desktop-portal-wlr` and `-gtk`). Screen sharing
-and the waybar `privacy` module may therefore not work out of the box. Fix it
-either by installing `xdg-desktop-portal-gnome`, or by dropping a
-`/etc/xdg/xdg-desktop-portal/niri-portals.conf` that points ScreenCast at
-`wlr`.
+The image installs `xdg-desktop-portal-gnome` and selects it for ScreenCast
+and Screenshot in `/etc/xdg/xdg-desktop-portal/niri-portals.conf`. Niri uses
+the GNOME screencast integration; the wlr backend is not a substitute.
+The Secret portal remains assigned to `gnome-keyring`.
 
 ## Filesystems (FUSE)
 
@@ -151,12 +207,12 @@ If you would rather not have the setuid `fusermount` around, drop `fuse` from
 ## YubiKey
 
 The YubiKey guards two things on this image: the **LUKS root volume at boot**
-and the **swaylock screen lock**. SDDM login, `sudo` and polkit deliberately
-stay password-only.
+and, once enabled in DMS settings, the **DMS screen lock**. No YubiKey PAM
+changes are applied to greetd login, `sudo` or polkit.
 
 | Package | Use |
 | --- | --- |
-| `pam-u2f` | `pam_u2f.so`, used by `/etc/pam.d/swaylock` |
+| `pam-u2f` | `pam_u2f.so`, used by `/etc/pam.d/dankshell-u2f` |
 | `pamu2fcfg` | Registers a key into a mapping file |
 | `fido2-tools` | `fido2-token`, to set or change the token PIN |
 | `yubikey-manager` | `ykman`, general key management |
@@ -167,18 +223,21 @@ already in the base image as a dependency of `openssh-clients`.
 
 ### Screen lock
 
-`/etc/pam.d/swaylock` is already configured:
+`/etc/pam.d/dankshell-u2f` supplies DMS's dedicated key-only service:
 
 ```
-auth sufficient   pam_u2f.so cue
-auth include      login
+auth required pam_u2f.so cue origin=pam://nirigo appid=pam://nirigo
+account required pam_permit.so
 ```
 
-`sufficient` means the key unlocks the screen on its own, and a failed or
-missing key falls through to the normal password prompt. Register your key
-first, otherwise `pam_u2f` has nothing to match against:
+In **Settings → Lock Screen**, enable security-key authentication and select
+**OR** for password-or-key unlocking. The Auto security-key source discovers
+this file; the password service is separate. Validate it with
+`dms auth validate --purpose u2f --path /etc/pam.d/dankshell-u2f`.
+Existing nirigo enrollment files can be reused. For a new enrollment:
 
 ```
+mkdir -p ~/.config/Yubico
 pamu2fcfg -u "$USER" -o pam://nirigo -i pam://nirigo > ~/.config/Yubico/u2f_keys
 ```
 
@@ -245,40 +304,15 @@ Caveats:
 
 ## Screen locking and suspend
 
-wayblue installs `swaylock` and `swayidle` for the niri image but wires up
-neither — its sway and hyprland images ship a config, niri got nothing — so
-stock wayblue niri suspends straight to an unlocked session.
+DMS owns locking and idle policy through the enabled `dms.service` user unit.
+The old `nirigo-swayidle.service` is retired and globally masked to prevent
+stale enablement links from starting a second locker.
 
-This image adds `nirigo-swayidle.service`, a user unit enabled for all users:
-
-```
-/usr/bin/swayidle -w before-sleep '/usr/bin/swaylock -f'
-```
-
-`-w` is the entire point. swayidle takes a logind *delay* inhibitor and blocks
-until `swaylock -f` reports the screen locked before releasing it, so the lock
-is guaranteed to be up before the machine sleeps. Without it the suspend races
-the locker.
-
-`/etc/systemd/logind.conf.d/inhibit-delay.conf` raises `InhibitDelayMaxSec` from
-its 5 s default to 10 s. Once that cap elapses logind suspends regardless, so a
-slow locker on a loaded handheld would otherwise leave you resuming unlocked.
-
-Check it is running with `systemctl --user status nirigo-swayidle.service`.
-
-Only lock-on-suspend is configured. If you also want an idle timeout, or want
-`loginctl lock-session` to actually do something (swaylock itself ignores
-logind's `Lock` signal, so without a swayidle handler that command is a no-op),
-drop in your own unit or extend the command line:
-
-```
-swayidle -w \
-    timeout 300 'swaylock -f' \
-    timeout 360 'niri msg action power-off-monitors' \
-    before-sleep 'swaylock -f' \
-    lock 'swaylock -f' \
-    unlock 'pkill -u "$USER" -USR1 swaylock'
-```
+Use `dms ipc call lock lock` or Super+Alt+L to lock. In DMS settings verify
+**loginctl lock integration** and **lock before suspend** are enabled, and
+configure AC/battery idle timeouts there. Test a suspend/resume cycle before
+relying on the new configuration. The power button still requests suspend
+through logind, and `InhibitDelayMaxSec=10` remains configured.
 
 ## Keyring
 
@@ -288,14 +322,15 @@ redundant: PAM starts `gnome-keyring-daemon --login` at login, and that process
 exits if nothing connects it to the session bus within a few minutes.
 
 Auto-unlock at login is handled by PAM, not by the compositor. Fedora's stock
-`/etc/pam.d/sddm` already carries the two lines that do it:
+`/etc/pam.d/greetd` already carries the two lines that do it. The image ensures
+`gnome-keyring-pam` is installed:
 
 ```
 -auth    optional  pam_gnome_keyring.so
 -session optional  pam_gnome_keyring.so auto_start
 ```
 
-Verify with `grep gnome_keyring /etc/pam.d/sddm /etc/pam.d/passwd`. The `auth`
+Verify with `grep gnome_keyring /etc/pam.d/greetd /etc/pam.d/passwd`. The `auth`
 module stashes the password you typed, the `session` module uses it to decrypt
 the `login` keyring. **This only works if the `login` keyring password equals
 your account password.** If they have drifted apart, open Seahorse, right-click
@@ -303,13 +338,13 @@ the `login` keyring and change its password to match. `pam_gnome_keyring` in
 `/etc/pam.d/passwd` keeps them in sync afterwards.
 
 > **Warning**
-> Do not add `pam_u2f.so` as `sufficient` to `/etc/pam.d/sddm`. A FIDO2
+> Do not add `pam_u2f.so` as `sufficient` to `/etc/pam.d/greetd`. A FIDO2
 > assertion is not a password, so `PAM_AUTHTOK` is never set and
 > `pam_gnome_keyring` has nothing to unlock the keyring with — you would get a
 > manual keyring prompt the first time any app asks for a secret. This is the
-> same failure mode as fingerprint login. That is why SDDM on this image stays
-> password-only. If you want the YubiKey at login anyway, add it as a
-> `required` second factor *after* `password-auth`, not as `sufficient`.
+> same failure mode as fingerprint login. Keep password authentication at
+> login when automatic keyring unlocking is desired; lock-screen U2F is
+> configured separately.
 
 ## Post-install
 
@@ -330,6 +365,18 @@ ujust install-nix
 If build on Fedora Atomic, you can generate an offline ISO with the instructions available [here](https://blue-build.org/learn/universal-blue/#fresh-install-from-an-iso). These ISOs cannot unfortunately be distributed on GitHub for free due to large sizes, so for public projects something else has to be used for hosting.
 
 ## Verification
+
+Local migration checks (requires Bats and ShellCheck):
+
+```bash
+bats tests/migration.bats
+shellcheck files/scripts/check-niri-config-drift.sh files/scripts/remove-packages.sh \
+  files/scripts/niri-dropins.sh files/system/usr/libexec/rotatetdp.sh tests/migration.bats
+```
+
+The image build additionally checks the pinned stock template and runs
+`niri validate` on both the assembled desktop config and the greeter config.
+These checks do not replace the device smoke tests above.
 
 These images are signed with [Sigstore](https://www.sigstore.dev/)'s [cosign](https://github.com/sigstore/cosign). You can verify the signature by downloading the `cosign.pub` file from this repo and running the following command:
 

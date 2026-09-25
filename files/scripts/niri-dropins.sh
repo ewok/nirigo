@@ -97,8 +97,8 @@ fi
 # include paths above point at /etc, which is not populated yet during the
 # build, so validate against a temporary tree with rewritten paths.
 if ! command -v niri >/dev/null 2>&1; then
-    echo "warning: niri binary not found, skipping config validation." >&2
-    exit 0
+    echo "error: niri binary not found; cannot validate the desktop config." >&2
+    exit 1
 fi
 
 tmpdir="$(mktemp -d)"
@@ -119,3 +119,6 @@ fi
 echo "Validating ${tmpdir}/config.kdl with $(niri --version)"
 HOME="${HOME:-/root}" niri validate --config "${tmpdir}/config.kdl"
 echo "niri config validation passed."
+
+# The login screen uses an independent compositor config.
+HOME="${HOME:-/root}" niri validate --config /etc/greetd/niri.kdl
