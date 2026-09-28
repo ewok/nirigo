@@ -133,6 +133,11 @@ modules:
       enabled:
         - input-remapper.service
 
+  # Install the pinned plugin first; image files overlay its focus fixes.
+  - type: script
+    scripts:
+      - install-virtualkeyboard.sh
+
   - type: files
     files:
       - source: system

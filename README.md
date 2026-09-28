@@ -330,10 +330,20 @@ ujust dms-keyboard-setup
 ```
 
 The helper requests sudo to add your user to the `ydotool` group and enable
-and restart the daemon, then installs the upstream
+and restart the daemon, then links the image-owned
 [Virtual Keyboard plugin](https://github.com/sitolam/dms-plugins/tree/main/plugins/virtualkeyboard)
-using `dms plugins install virtualKeyboard`. Plugin installation requires
-network access; plugin updates are managed through DMS.
+from `/usr/share/nirigo/dms-plugins/VirtualKeyboard`. The image downloads a
+pinned upstream revision during its build and overlays nirigo's focus fixes.
+User setup works offline, and keyboard updates follow image updates.
+
+Rerun the helper to migrate an earlier registry installation. It moves the
+existing `plugins/virtualKeyboard` directory or symlink and its `.meta` file
+into a uniquely named directory under
+`${XDG_CONFIG_HOME:-$HOME/.config}/DankMaterialShell/plugin-backups/`, then
+creates the image-owned link. Existing DMS plugin settings and widget IDs
+are retained. Repeated setup leaves the correct link alone. Restart DMS
+(`dms restart`) after migrating an already enabled plugin. Use the bundled
+copy rather than reinstalling the registry version, which lacks these fixes.
 
 On Fedora Atomic, image-provided groups can live in `/usr/lib/group` instead
 of `/etc/group`. The helper copies the `ydotool` entry into the writable group
@@ -372,6 +382,24 @@ dms ipc call virtualKeyboard toggle
 The plugin also supports `open` and `close`. It opens on demand rather than
 automatically when a text field gains focus, and currently ships US QWERTY.
 Test it by focusing a text editor and tapping keys on the keyboard widget.
+
+Both keyboard modes use non-focusing Wayland layer-shell panels so tapping
+keys leaves the application focused. The pin button switches to a movable
+overlay: drag the handle above the keys with a finger or mouse. It stays
+within its screen and scales down if needed to fit after display rotation.
+It is an overlay, not a normal niri floating window; moving it to another
+monitor using niri window commands is not supported. Closing and reopening
+the movable keyboard resets its position near the bottom of the screen.
+
+Use the on-screen hide button, DankBar toggle or IPC `close` to dismiss it.
+Physical Escape goes to the focused application instead of closing the
+keyboard. The daemon still releases latched modifiers on hide and pin/unpin.
+
+On-device focus checks: type into an editor in both modes; drag the pinned
+keyboard and type again; tap another application outside the keyboard and
+verify subsequent keys reach it. Test Shift/Ctrl/Alt, hide/reopen, pin/unpin,
+and display rotation while the keyboard is open. The surrounding transparent
+area must remain clickable and must not cover other applications' input.
 
 For diagnostics:
 

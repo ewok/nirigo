@@ -43,7 +43,7 @@ dms-setup:
 dms-greeter-sync:
   dms-greeter sync
 
-# Grant socket access and install the upstream on-screen keyboard for this user.
+# Grant socket access and link the image-owned, non-focusing keyboard.
 dms-keyboard-setup:
   #!/usr/bin/env bash
   set -Eeuo pipefail
@@ -53,6 +53,13 @@ dms-keyboard-setup:
   fi
   if [[ ! -f /usr/lib/sysusers.d/nirigo-ydotool.conf || ! -f /usr/lib/systemd/user/dms.service.d/10-ydotool.conf ]]; then
     printf 'error: keyboard configuration is missing; update to an image with keyboard support first.\n' >&2
+    exit 1
+  fi
+  source=/usr/share/nirigo/dms-plugins/VirtualKeyboard
+  config="${XDG_CONFIG_HOME:-$HOME/.config}/DankMaterialShell"
+  target="$config/plugins/virtualKeyboard"
+  if [[ ! -f "$source/plugin.json" ]]; then
+    printf 'error: bundled keyboard is missing; update to an image with the focus fix first.\n' >&2
     exit 1
   fi
   sudo systemd-sysusers /usr/lib/sysusers.d/nirigo-ydotool.conf
@@ -75,9 +82,25 @@ dms-keyboard-setup:
   sudo systemctl enable ydotool.service
   sudo systemctl restart ydotool.service
   systemctl --user daemon-reload
-  dms plugins install virtualKeyboard
+  mkdir -p -- "$config/plugins"
+  if [[ ! -L "$target" || $(readlink -- "$target") != "$source" ]]; then
+    if [[ -e "$target" || -L "$target" || -e "$target.meta" ]]; then
+      mkdir -p -- "$config/plugin-backups"
+      backup=$(mktemp -d "$config/plugin-backups/virtualKeyboard.XXXXXX")
+      if [[ -e "$target" || -L "$target" ]]; then
+        mv -- "$target" "$backup/virtualKeyboard"
+      fi
+      if [[ -e "$target.meta" ]]; then
+        mv -- "$target.meta" "$backup/virtualKeyboard.meta"
+      fi
+      printf 'Saved previous plugin and metadata to %s\n' "$backup"
+    fi
+    ln -sT -- "$source" "$target"
+  fi
+  printf 'Linked the image-owned Virtual Keyboard (docked and movable focus fixes).\n'
   printf 'Log out and back in to apply group membership and the DMS socket environment.\n'
-  printf 'In DMS Settings → Plugins, enable Virtual Keyboard.\n'
+  printf 'In DMS Settings → Plugins, scan and enable Virtual Keyboard.\n'
+  printf 'If already enabled, restart DMS to load the patched plugin: dms restart\n'
   printf 'Add its widget to your DankBar layout for touchscreen access.\n'
   printf 'Toggle it with: dms ipc call virtualKeyboard toggle\n'
 

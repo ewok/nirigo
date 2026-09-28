@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
+const { readFileSync, mkdtempSync, mkdirSync, writeFileSync, readlinkSync, readdirSync, rmSync, symlinkSync } = require('node:fs');
+const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -47,20 +48,40 @@ dms() {
 }
 `;
 
-function run(extra = {}) {
-    return spawnSync('bash', ['-c', mocks + recipe.replaceAll('/usr/lib/', '${TEST_IMAGE}/usr/lib/')], {
-        encoding: 'utf8',
-        env: { ...process.env, TEST_IMAGE: join(repo, 'files/system'), TEST_FAIL: '', ...extra },
-    });
+function sandbox(callback) {
+    const tmp = mkdtempSync(join(tmpdir(), 'keyboard-setup-'));
+    try {
+        const source = join(tmp, 'image plugin');
+        const configHome = join(tmp, 'user config');
+        const config = join(configHome, 'DankMaterialShell');
+        const target = join(config, 'plugins/virtualKeyboard');
+        mkdirSync(source);
+        writeFileSync(join(source, 'plugin.json'), '{"id":"virtualKeyboard"}');
+        const script = recipe.replaceAll('/usr/lib/', '${TEST_IMAGE}/usr/lib/')
+            .replace('source=/usr/share/nirigo/dms-plugins/VirtualKeyboard', 'source="$TEST_SOURCE"');
+        const run = (extra = {}) => spawnSync('bash', ['-c', mocks + script], {
+            encoding: 'utf8',
+            env: { ...process.env, TEST_IMAGE: join(repo, 'files/system'), TEST_SOURCE: source,
+                XDG_CONFIG_HOME: configHome, TEST_FAIL: '', ...extra },
+        });
+        return callback({ run, source, config, target, tmp });
+    } finally {
+        rmSync(tmp, { recursive: true, force: true });
+    }
 }
 
-test('keyboard setup keeps plugin installation unprivileged and explains activation', () => {
+function run(extra = {}) {
+    return sandbox(({ run }) => run(extra));
+}
+
+test('keyboard setup links the bundled plugin without a registry install and explains activation', () => {
     const result = run();
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /sudo:usermod --append --groups ydotool desktop-user/);
     assert.match(result.stdout, /sudo:systemctl enable ydotool.service/);
     assert.match(result.stdout, /sudo:systemctl restart ydotool.service/);
-    assert.match(result.stdout, /desktop-dms:plugins install virtualKeyboard/);
+    assert.match(result.stdout, /Linked the image-owned Virtual Keyboard/);
+    assert.doesNotMatch(result.stdout, /desktop-dms:/);
     assert.doesNotMatch(result.stdout, /sudo:dms/);
     assert.match(result.stdout, /Log out and back in/);
     assert.match(result.stdout, /enable Virtual Keyboard/);
@@ -74,19 +95,67 @@ test('keyboard setup rejects root and missing image configuration before changes
     }
 });
 
-test('keyboard setup stops on privilege, service and plugin installation failures', () => {
+test('keyboard setup stops on privilege and service failures', () => {
     for (const failure of [
         'usermod --append --groups ydotool desktop-user',
         'systemctl enable ydotool.service',
         'systemctl restart ydotool.service',
-        'dms',
     ]) {
         const result = run({ TEST_FAIL: failure });
         assert.equal(result.status, 1, failure);
         assert.doesNotMatch(result.stdout, /Log out and back in/);
-        if (failure !== 'dms') assert.doesNotMatch(result.stdout, /desktop-dms:/);
+        assert.doesNotMatch(result.stdout, /Linked the image-owned/);
     }
 });
+
+test('fresh link and repeated setup work with spaces in config paths', () => sandbox(({ run, target, source, config }) => {
+    assert.equal(run().status, 0);
+    assert.equal(readlinkSync(target), source);
+    assert.equal(run().status, 0);
+    assert.equal(readlinkSync(target), source);
+    assert.throws(() => readdirSync(join(config, 'plugin-backups')), { code: 'ENOENT' });
+}));
+
+test('migration preserves local directories, registry symlinks, metadata and DMS settings', () => {
+    for (const kind of ['directory', 'symlink', 'dangling']) sandbox(({ run, target, config, source, tmp }) => {
+        mkdirSync(join(config, 'plugins'), { recursive: true });
+        const original = join(tmp, 'original plugin');
+        if (kind === 'directory') {
+            mkdirSync(target);
+            writeFileSync(join(target, 'personal.qml'), 'keep');
+        } else {
+            if (kind === 'symlink') {
+                mkdirSync(original);
+                writeFileSync(join(original, 'personal.qml'), 'keep');
+            }
+            symlinkSync(original, target);
+        }
+        writeFileSync(`${target}.meta`, 'original metadata');
+        writeFileSync(join(config, 'plugin_settings.json'), '{"keep":true}');
+        const result = run();
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(readlinkSync(target), source);
+        const backupRoot = join(config, 'plugin-backups');
+        const backup = join(backupRoot, readdirSync(backupRoot)[0]);
+        assert.equal(readFileSync(join(backup, 'virtualKeyboard.meta'), 'utf8'), 'original metadata');
+        if (kind === 'directory') {
+            assert.equal(readFileSync(join(backup, 'virtualKeyboard/personal.qml'), 'utf8'), 'keep');
+        } else {
+            assert.equal(readlinkSync(join(backup, 'virtualKeyboard')), original);
+        }
+        assert.equal(readFileSync(join(config, 'plugin_settings.json'), 'utf8'), '{"keep":true}');
+        assert.equal(run().status, 0);
+        assert.equal(readdirSync(backupRoot).length, 1);
+    });
+});
+
+test('missing bundled plugin stops before privileged changes', () => sandbox(({ run, source, target }) => {
+    rmSync(join(source, 'plugin.json'));
+    const result = run();
+    assert.equal(result.status, 1);
+    assert.doesNotMatch(result.stdout, /sudo:/);
+    assert.throws(() => readlinkSync(target), { code: 'ENOENT' });
+}));
 
 test('image-only group is copied with its original GID and members; local groups are preserved', () => {
     const imageOnly = run({ TEST_LOCAL_GROUP: 'no' });
@@ -114,4 +183,25 @@ test('silent usermod no-op is detected without claiming success or starting serv
     assert.equal(result.status, 1);
     assert.match(result.stderr, /still not a member of ydotool/);
     assert.doesNotMatch(result.stdout, /sudo:systemctl|desktop-dms:|Log out and back in/);
+});
+
+test('movable keyboard stays within screen bounds after dragging or rotation, including scaled layouts', () => {
+    const qml = readFileSync(join(repo,
+        'files/system/usr/share/nirigo/dms-plugins/VirtualKeyboard/FloatingKeyboardWindow.qml'), 'utf8');
+    const body = qml.match(/function constrainPosition\(\) \{([\s\S]*?)\n    \}/)[1];
+    const constrain = new Function('movable', 'width', 'height', body);
+    const card = { x: 1200, y: 700, width: 1000, height: 400, scale: 1 };
+    constrain(card, 1600, 900);
+    assert.deepEqual([card.x, card.y], [600, 500]);
+    // Rotate to a narrow display: preserve the visible card, not unscaled bounds.
+    card.scale = 0.8;
+    constrain(card, 800, 1280);
+    assert.deepEqual([card.x, card.y], [0, 500]);
+    card.x = -50;
+    card.y = 2000;
+    constrain(card, 800, 1280);
+    assert.deepEqual([card.x, card.y], [0, 960]);
+    constrain(card, 0, 0); // Surface temporarily unconfigured during a mode change.
+    assert.deepEqual([card.x, card.y], [0, 0]);
+    assert.doesNotThrow(() => constrain(null, 0, 0));
 });
