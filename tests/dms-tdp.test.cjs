@@ -24,7 +24,11 @@ function mockHhd(tmp) {
         systemctl: `printf '%s\\n' "$*" >>"$TEST_LOG"
 case "$1" in
     list-units) printf '%s\\n' "\${TEST_ACTIVE:-}" ;;
-    list-unit-files) printf '%s\\n' "\${TEST_ENABLED:-}" ;;
+    list-unit-files)
+        if [[ \${TEST_LIST_EXIT:-0} != 0 ]]; then exit "$TEST_LIST_EXIT"; fi
+        # systemctl returns 1 for an empty filtered selection, not an empty string with success.
+        if [[ $* == *--state=* && -z \${TEST_ENABLED:-} ]]; then exit 1; fi
+        printf '%s\\n' "\${TEST_ENABLED:-hhd.service disabled disabled}" ;;
     enable) exit "\${TEST_START_EXIT:-0}" ;;
     disable) exit "\${TEST_STOP_EXIT:-0}" ;;
     is-active) exit "\${TEST_INACTIVE:-0}" ;;
@@ -202,6 +206,11 @@ test('HHD repair selects the modern service and removes duplicate units once', (
         assert.equal(run({ TEST_ACTION: 'fix', TEST_UID: '0' }).status, 1);
         assert.equal(run({ TEST_ACTION: 'invalid' }).status, 1);
         assert.equal(run({ TEST_LOAD: 'masked' }).status, 1);
+        writeFileSync(env.TEST_LOG, '');
+        const failedDiscovery = run({ TEST_ACTION: 'fix', TEST_LIST_EXIT: '1' });
+        assert.equal(failedDiscovery.status, 1);
+        assert.match(failedDiscovery.stderr, /command failed \(exit 1\): systemctl list-unit-files/);
+        assert.doesNotMatch(readFileSync(env.TEST_LOG, 'utf8'), /disable --now|enable --now/);
     } finally {
         rmSync(tmp, { recursive: true, force: true });
     }

@@ -150,7 +150,7 @@ hhd-setup action="setup":
     printf 'Read its logs with: sudo journalctl -b -u %q --no-pager -n 80\n' "$unit" >&2
     printf 'Inspect all instances with: systemctl list-units --all "hhd*.service"\n' >&2
   }
-  trap 'diagnostics' ERR
+  trap 'status=$?; printf "error: command failed (exit %s): %s\n" "$status" "$BASH_COMMAND" >&2; diagnostics' ERR
   # Match daemon commands, not hhdctl, hhd-ui or these helper recipes.
   check_processes() {
     local allowed=${1:-0} processes status pid command
@@ -168,7 +168,14 @@ hhd-setup action="setup":
   }
   # HHD instances share the API socket and controller devices.
   active=$(systemctl list-units --all --plain --no-legend --no-pager --state=active,activating,reloading,deactivating 'hhd*.service')
-  enabled=$(systemctl list-unit-files --no-legend --no-pager --state=enabled,enabled-runtime 'hhd*.service')
+  # A filtered list-unit-files returns 1 when nothing matches. Query all service
+  # files, then filter locally so an empty HHD selection is not a fatal error.
+  unit_files=$(systemctl list-unit-files --type=service --no-legend --no-pager)
+  enabled=""
+  while read -r other state _; do
+    case "$other" in hhd.service|hhd@?*.service) ;; *) continue ;; esac
+    case "$state" in enabled|enabled-runtime) enabled+="$other"$'\n' ;; esac
+  done <<<"$unit_files"
   declare -A seen=()
   while read -r other _; do
     # Restrict repair to the daemon units, excluding unrelated hhd-prefixed services.

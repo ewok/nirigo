@@ -141,7 +141,7 @@ verify_fido2() {
 }
 
 crypttab_is_tracked() {
-    rpm-ostree initramfs-etc 2>/dev/null | grep -qF "${CRYPTTAB}"
+    rpm-ostree initramfs-etc 2>/dev/null | grep -F "${CRYPTTAB}" >/dev/null
 }
 
 # Merge fido2-device=auto and x-initrd.attach into an existing crypttab options
@@ -189,7 +189,7 @@ write_crypttab_options() {
 
     mv "${CRYPTTAB}.nirigo-new" "${CRYPTTAB}"
     chmod 0644 "${CRYPTTAB}"
-    note "Backed up the previous ${CRYPTTAB} to ${CRYPTTAB_BACKUP}"
+    note "Original ${CRYPTTAB} backup retained at ${CRYPTTAB_BACKUP}"
 }
 
 sync_initramfs() {
