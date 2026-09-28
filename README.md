@@ -314,6 +314,58 @@ configure AC/battery idle timeouts there. Test a suspend/resume cycle before
 relying on the new configuration. The power button still requests suspend
 through logind, and `InhibitDelayMaxSec=10` remains configured.
 
+## On-screen keyboard
+
+The image includes `ydotool` and enables Fedora's system-level
+`ydotool.service`. Its socket is `/run/ydotoold/socket`, owned by
+`root:ydotool` with mode `0660`, inside a `0750` runtime directory. The DMS
+user service receives `YDOTOOL_SOCKET=/run/ydotoold/socket` through an
+image-owned systemd drop-in.
+
+After updating and booting the image, run as your desktop user (without
+`sudo`):
+
+```bash
+ujust dms-keyboard-setup
+```
+
+The helper requests sudo to add your user to the `ydotool` group and enable
+and restart the daemon, then installs the upstream
+[Virtual Keyboard plugin](https://github.com/sitolam/dms-plugins/tree/main/plugins/virtualkeyboard)
+using `dms plugins install virtualKeyboard`. Plugin installation requires
+network access; plugin updates are managed through DMS.
+
+**Log out and back in** to apply group membership and the DMS environment.
+In **Settings → Plugins**, enable **Virtual Keyboard**, then add its widget
+under **Settings → DankBar** for touchscreen access. To toggle it from a
+terminal or your own niri binding:
+
+```bash
+dms ipc call virtualKeyboard toggle
+```
+
+The plugin also supports `open` and `close`. It opens on demand rather than
+automatically when a text field gains focus, and currently ships US QWERTY.
+Test it by focusing a text editor and tapping keys on the keyboard widget.
+
+For diagnostics:
+
+```bash
+systemctl status ydotool.service
+systemctl --user show dms.service -p Environment
+id -nG
+stat /run/ydotoold/socket
+sudo journalctl -b -u ydotool.service --no-pager -n 80
+```
+
+The environment shown for DMS should include the socket path, and `id -nG`
+should include `ydotool`. To test the client directly, focus a text editor
+within three seconds of running this (it types `a`):
+
+```bash
+sleep 3; YDOTOOL_SOCKET=/run/ydotoold/socket ydotool key 30:1 30:0
+```
+
 ## Legion Go TDP widget
 
 The bundled **Legion Go TDP** plugin (DMS 1.6+) provides both a DankBar widget
@@ -440,14 +492,14 @@ shellcheck files/scripts/check-niri-config-drift.sh files/scripts/remove-package
   files/scripts/niri-dropins.sh files/system/usr/libexec/rotatetdp.sh tests/migration.bats
 ```
 
-TDP plugin backend and installation-helper checks (requires Node.js):
+TDP plugin backend and TDP/keyboard setup-helper checks (requires Node.js):
 
 ```bash
-node --test tests/dms-tdp.test.cjs
+node --test tests/dms-tdp.test.cjs tests/dms-keyboard.test.cjs
 ```
 
-These exercise backend logic with process doubles; QML loading and UI behavior
-require the DMS/device smoke checks in the TDP widget section.
+These exercise backend and setup logic with process doubles; QML loading,
+socket access and UI behavior require the DMS/device smoke checks above.
 
 The image build additionally checks the pinned stock template and runs
 `niri validate` on both the assembled desktop config and the greeter config.

@@ -43,6 +43,30 @@ dms-setup:
 dms-greeter-sync:
   dms-greeter sync
 
+# Grant socket access and install the upstream on-screen keyboard for this user.
+dms-keyboard-setup:
+  #!/usr/bin/env bash
+  set -Eeuo pipefail
+  if [[ $(id -u) == 0 ]]; then
+    printf 'Run ujust dms-keyboard-setup as your desktop user, without sudo. It requests sudo when needed.\n' >&2
+    exit 1
+  fi
+  if [[ ! -f /usr/lib/sysusers.d/nirigo-ydotool.conf || ! -f /usr/lib/systemd/user/dms.service.d/10-ydotool.conf ]]; then
+    printf 'error: keyboard configuration is missing; update to an image with keyboard support first.\n' >&2
+    exit 1
+  fi
+  sudo systemd-sysusers /usr/lib/sysusers.d/nirigo-ydotool.conf
+  sudo usermod --append --groups ydotool "$(id -un)"
+  sudo systemctl daemon-reload
+  sudo systemctl enable ydotool.service
+  sudo systemctl restart ydotool.service
+  systemctl --user daemon-reload
+  dms plugins install virtualKeyboard
+  printf 'Log out and back in to apply group membership and the DMS socket environment.\n'
+  printf 'In DMS Settings → Plugins, enable Virtual Keyboard.\n'
+  printf 'Add its widget to your DankBar layout for touchscreen access.\n'
+  printf 'Toggle it with: dms ipc call virtualKeyboard toggle\n'
+
 # Initialize the system daemon for the desktop user and verify Legion Go TDP.
 hhd-setup:
   #!/usr/bin/env bash

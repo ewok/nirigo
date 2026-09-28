@@ -143,6 +143,7 @@ modules:
     system:
       enabled:
         - greetd.service
+        - ydotool.service
       masked:
         - sddm.service
         - sddm-boot.service
