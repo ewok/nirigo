@@ -11,7 +11,8 @@ const plugin = join(repo, 'files/system/usr/share/nirigo/dms-plugins/LegionGoTdp
 
 function setupRecipe(name) {
     const justfile = readFileSync(join(repo, 'files/system/usr/share/ublue-os/just/60-custom.just'), 'utf8');
-    return justfile.match(new RegExp(`^${name}:\\n((?:  .*\\n)+)`, 'm'))[1].replace(/^  /gm, '');
+    return justfile.match(new RegExp(`^${name}(?: action="setup")?:\\n((?:  .*\\n)+)`, 'm'))[1]
+        .replace(/^  /gm, '').replace('{{quote(action)}}', '"${TEST_ACTION:-setup}"');
 }
 
 function mockHhd(tmp) {
@@ -25,12 +26,18 @@ case "$1" in
     list-units) printf '%s\\n' "\${TEST_ACTIVE:-}" ;;
     list-unit-files) printf '%s\\n' "\${TEST_ENABLED:-}" ;;
     enable) exit "\${TEST_START_EXIT:-0}" ;;
+    disable) exit "\${TEST_STOP_EXIT:-0}" ;;
+    is-active) exit "\${TEST_INACTIVE:-0}" ;;
+    show)
+        if [[ $* == *LoadState* ]]; then printf '%s\\n' "\${TEST_LOAD:-not-found}";
+        else printf '%s\\n' "\${TEST_PID:-1220}"; fi ;;
     *) exit 99 ;;
 esac`,
         hhdctl: `printf 'read\\n' >>"$TEST_LOG"
 if [[ \${TEST_READ_EXIT:-0} != 0 ]]; then printf 'missing API\\n' >&2; exit "$TEST_READ_EXIT"; fi
 printf '%s\\n' "\${TEST_MODE:-balanced}"`,
         sleep: ':',
+        pgrep: 'if [[ -n ${TEST_PROCESSES:-} ]]; then printf "%s\\n" "$TEST_PROCESSES"; else exit 1; fi',
         ujust: '[[ $1 == hhd-setup ]] || exit 99; exec bash "$TEST_HHD_RECIPE"',
     };
     for (const [name, body] of Object.entries(scripts)) {
@@ -154,6 +161,55 @@ test('setup handles spaces, repeated installation and conflicting local plugins'
     } finally {
         rmSync(tmp, { recursive: true, force: true });
     }
+});
+
+test('HHD repair selects the modern service and removes duplicate units once', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'hhd-fix-'));
+    try {
+        const env = mockHhd(tmp);
+        const run = (extra = {}) => spawnSync('bash', [env.TEST_HHD_RECIPE], {
+            env: { ...env, TEST_LOAD: 'loaded', ...extra }, encoding: 'utf8',
+        });
+        assert.equal(run().status, 0);
+        assert.match(readFileSync(env.TEST_LOG, 'utf8'), /enable --now hhd.service/);
+        const duplicate = {
+            TEST_ACTIVE: 'hhd.service loaded active running HHD\nhhd@gamer.service loaded active running HHD',
+            TEST_ENABLED: 'hhd@gamer.service enabled disabled\nhhd-helper.service enabled disabled',
+        };
+        assert.equal(run(duplicate).status, 1);
+        writeFileSync(env.TEST_LOG, '');
+        assert.equal(run({ ...duplicate, TEST_ACTION: 'fix' }).status, 0);
+        const calls = readFileSync(env.TEST_LOG, 'utf8');
+        assert.equal(calls.match(/disable --now hhd@gamer.service/g).length, 1);
+        assert.match(calls, /disable --now hhd.service/);
+        assert.doesNotMatch(calls, /disable --now hhd-helper/);
+        assert.ok(calls.indexOf('disable --now hhd@gamer.service') < calls.indexOf('enable --now hhd.service'));
+        assert.equal(run({ TEST_ACTION: 'fix' }).status, 0);
+        assert.equal(run({ TEST_ACTION: 'fix', TEST_LOAD: 'not-found' }).status, 0);
+        assert.match(readFileSync(env.TEST_LOG, 'utf8'), /enable --now hhd@gamer.service/);
+        for (const extra of [
+            { ...duplicate, TEST_STOP_EXIT: '1' },
+            { TEST_PROCESSES: '999 /usr/bin/python /usr/bin/hhd' },
+        ]) {
+            writeFileSync(env.TEST_LOG, '');
+            assert.equal(run({ ...extra, TEST_ACTION: 'fix' }).status, 1);
+            assert.doesNotMatch(readFileSync(env.TEST_LOG, 'utf8'), /enable --now/);
+        }
+        assert.equal(run({ TEST_PROCESSES: '1220 /usr/bin/hhd' }).status, 0);
+        assert.equal(run({ TEST_PROCESSES: '999 /usr/bin/hhd' }).status, 1);
+        assert.equal(run({ TEST_PID: '0' }).status, 1);
+        assert.equal(run({ TEST_INACTIVE: '1' }).status, 1);
+        assert.equal(run({ TEST_ACTION: 'fix', TEST_UID: '0' }).status, 1);
+        assert.equal(run({ TEST_ACTION: 'invalid' }).status, 1);
+        assert.equal(run({ TEST_LOAD: 'masked' }).status, 1);
+    } finally {
+        rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test('HHD setup recipe passes Bash syntax validation', () => {
+    const result = spawnSync('bash', ['-n'], { input: setupRecipe('hhd-setup'), encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
 });
 
 test('HHD setup verifies readiness and diagnoses service, API and profile failures', () => {

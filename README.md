@@ -451,11 +451,27 @@ ujust dms-tdp-setup
 ```
 
 The helper calls `ujust hhd-setup`, which requests sudo to enable and start
-`hhd@<your-username>.service` at boot, then retries the TDP read for up to about
-45 seconds. It prints the current profile on success or diagnostic commands on
-failure. It refuses to start a competing instance if another HHD service is
-active or enabled. Both commands can be rerun; `ujust hhd-setup` also works
-on its own when you only need the daemon.
+the packaged `hhd.service` at boot (falling back to `hhd@<your-username>.service`
+on older packages), then retries the TDP read for up to about 45 seconds.
+It checks service health and competing daemon processes before reporting the
+current profile. Failures print diagnostic commands. Both commands can be rerun;
+`ujust hhd-setup` also works on its own when you only need the daemon.
+
+If setup reports conflicting services, or a service's journal stops at
+`Trying to acquire hhd lock...`, run as your desktop user:
+
+```bash
+ujust hhd-fix
+```
+
+This stops and disables active/enabled `hhd.service` and `hhd@…` system-service
+instances, then starts the selected packaged service and verifies readiness.
+Settings and profiles are preserved. Repeated repair runs are supported.
+If another daemon remains (for example, a manually launched process or a user
+service), repair stops and prints its PID and command; stop that daemon or its
+owning service and rerun the helper. Repair interrupts HHD controller emulation
+briefly. Verify touchpad movement on the device after repair; a successful TDP
+read alone does not verify touchpad functionality.
 
 In **Settings → Plugins**, scan for plugins and enable **Legion Go TDP**. Add
 it to your DankBar layout and Control Center widgets, then run `dms restart`

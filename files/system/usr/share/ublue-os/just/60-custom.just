@@ -127,50 +127,93 @@ dms-keyboard-setup:
   printf 'Add its widget to your DankBar layout for touchscreen access.\n'
   printf 'Toggle it with: dms ipc call virtualKeyboard toggle\n'
 
-# Initialize the system daemon for the desktop user and verify Legion Go TDP.
-hhd-setup:
+# Initialize one packaged HHD daemon and verify Legion Go TDP.
+hhd-setup action="setup":
   #!/usr/bin/env bash
   set -Eeuo pipefail
+  action={{quote(action)}}
+  case "$action" in setup|fix) ;; *) printf 'Expected setup or fix.\n' >&2; exit 1 ;; esac
   if [[ $(id -u) == 0 ]]; then
     printf 'Run ujust hhd-setup as your desktop user, without sudo. It requests sudo when needed.\n' >&2
     exit 1
   fi
   user=$(id -un)
-  # Upstream passes %i (not unescaped %I) to --user; preserve username hyphens.
-  unit="hhd@$user.service"
+  # Modern HHD uses /etc/hhd and deprecates --user. Retain older package support.
+  load_state=$(systemctl show hhd.service --property=LoadState --value)
+  case "$load_state" in
+    loaded) unit=hhd.service ;;
+    not-found) unit="hhd@$user.service" ;;
+    *) printf 'error: hhd.service has LoadState=%s; resolve its unit configuration first.\n' "$load_state" >&2; exit 1 ;;
+  esac
   diagnostics() {
     printf 'Inspect HHD with: systemctl status %q\n' "$unit" >&2
     printf 'Read its logs with: sudo journalctl -b -u %q --no-pager -n 80\n' "$unit" >&2
+    printf 'Inspect all instances with: systemctl list-units --all "hhd*.service"\n' >&2
+  }
+  trap 'diagnostics' ERR
+  # Match daemon commands, not hhdctl, hhd-ui or these helper recipes.
+  check_processes() {
+    local allowed=${1:-0} processes status pid command
+    if processes=$(pgrep -af '(^|/|[[:space:]])hhd([[:space:]]|$)'); then
+      while read -r pid command; do
+        if [[ "$pid" != "$allowed" ]]; then
+          printf 'error: another HHD process remains: %s %s\nStop its owning service or manually launched daemon, then run ujust hhd-fix.\n' "$pid" "$command" >&2
+          return 1
+        fi
+      done <<<"$processes"
+    else
+      status=$?
+      [[ "$status" == 1 ]] || return "$status"
+    fi
   }
   # HHD instances share the API socket and controller devices.
   active=$(systemctl list-units --all --plain --no-legend --no-pager --state=active,activating,reloading,deactivating 'hhd*.service')
   enabled=$(systemctl list-unit-files --no-legend --no-pager --state=enabled,enabled-runtime 'hhd*.service')
+  declare -A seen=()
   while read -r other _; do
-    if [[ -n "$other" && "$other" != "$unit" ]]; then
-      printf 'error: %s is active or enabled; disable that HHD instance before setting up %s.\n' "$other" "$unit" >&2
+    # Restrict repair to the daemon units, excluding unrelated hhd-prefixed services.
+    case "$other" in hhd.service|hhd@?*.service) ;; *) continue ;; esac
+    [[ -z ${seen[$other]:-} ]] || continue
+    seen[$other]=1
+    if [[ "$action" == fix ]]; then
+      printf 'Stopping and disabling %s\n' "$other"
+      sudo systemctl disable --now "$other"
+    elif [[ "$other" != "$unit" ]]; then
+      printf 'error: %s is active or enabled; run ujust hhd-fix to repair conflicting services.\n' "$other" >&2
       exit 1
     fi
   done <<<"$active
   $enabled"
+  main_pid=$(systemctl show "$unit" --property=MainPID --value)
+  if [[ "$action" == fix ]]; then main_pid=0; fi
+  check_processes "$main_pid"
   if ! sudo systemctl enable --now "$unit"; then
     diagnostics
     exit 1
   fi
   # Type=simple may be active before the API and device plugins are ready.
   for ((attempt=0; attempt<15; attempt++)); do
-    if mode=$(sudo -n timeout 2s hhdctl get tdp.lenovo.tdp.mode --values 2>&1); then
+    if systemctl is-active --quiet "$unit" && mode=$(sudo -n timeout 2s hhdctl get tdp.lenovo.tdp.mode --values 2>&1); then
       case "$mode" in
         quiet|balanced|performance|custom)
-          printf 'HHD enabled and ready. Current TDP profile: %s\n' "$mode"
+          main_pid=$(systemctl show "$unit" --property=MainPID --value)
+          [[ "$main_pid" =~ ^[1-9][0-9]*$ ]]
+          check_processes "$main_pid"
+          systemctl is-active --quiet "$unit"
+          printf 'HHD enabled and ready (%s). Current TDP profile: %s\n' "$unit" "$mode"
           exit 0
           ;;
       esac
     fi
     sleep 1
   done
-  printf 'error: HHD did not provide a valid Legion Go TDP profile. Last response: %s\n' "$mode" >&2
+  printf 'error: HHD did not provide a valid Legion Go TDP profile. Last response: %s\n' "${mode:-service not active}" >&2
   diagnostics
   exit 1
+
+# Repair duplicate system daemon services while preserving settings and profiles.
+hhd-fix:
+  ujust hhd-setup fix
 
 # Start HHD and link the image-owned plugin so updates follow the installed image.
 dms-tdp-setup:
