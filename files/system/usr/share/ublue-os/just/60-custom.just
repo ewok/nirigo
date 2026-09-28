@@ -245,9 +245,9 @@ dms-tdp-setup:
   printf 'Add it to your DankBar layout and Control Center widgets.\n'
 
 # Enroll a YubiKey (FIDO2) as a LUKS unlock method for the encrypted root.
-setup-luks-fido2-unlock:
+setup-luks-fido2-unlock pin="keep":
   #!/usr/bin/env bash
-  sudo /usr/libexec/nirigo-luks-fido2 enroll
+  sudo /usr/libexec/nirigo-luks-fido2 enroll {{quote(pin)}}
 
 # Wipe the FIDO2 keyslot and revert the boot configuration.
 remove-luks-fido2-unlock:

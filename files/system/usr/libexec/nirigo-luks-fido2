@@ -32,7 +32,7 @@
 # ------
 # The existing passphrase slot is never touched, a recovery key is enrolled
 # before anything else, and the FIDO2 unlock is proven to work offline (via
-# `systemd-cryptsetup attach`) *before* /etc/crypttab or the initramfs are
+# `cryptsetup open --test-passphrase`) *before* /etc/crypttab or the initramfs are
 # modified. If anything still goes wrong at boot, the passphrase prompt is the
 # fallback and `rpm-ostree rollback` restores the previous deployment.
 
@@ -42,13 +42,6 @@ CRYPTTAB="/etc/crypttab"
 CRYPTTAB_BACKUP="/etc/crypttab.nirigo-fido2.bak"
 RECOVERY_DIR="/var/lib/nirigo"
 RECOVERY_FILE="${RECOVERY_DIR}/luks-recovery-key.txt"
-TEST_MAPPER="nirigo-fido2-test"
-
-# systemd-cryptsetup lives in libexec on Fedora; keep working if it ever moves.
-SYSTEMD_CRYPTSETUP="$(command -v systemd-cryptsetup || true)"
-if [[ -z "${SYSTEMD_CRYPTSETUP}" ]]; then
-    SYSTEMD_CRYPTSETUP="/usr/lib/systemd/systemd-cryptsetup"
-fi
 
 die() {
     echo "error: $*" >&2
@@ -129,8 +122,22 @@ enrolled_slots() {
 }
 
 initramfs_has_fido2() {
-    command -v lsinitrd >/dev/null 2>&1 || return 0
-    lsinitrd 2>/dev/null | grep -qiE 'libfido2|token-systemd-fido2'
+    local listing
+    command -v lsinitrd >/dev/null 2>&1 || return 2
+    listing="$(lsinitrd 2>/dev/null)" || return 2
+    # Capture the complete output: grep -q on a pipe can give lsinitrd SIGPIPE
+    # and incorrectly report failure under pipefail.
+    grep -qi 'libfido2' <<<"${listing}" &&
+        grep -qi 'token-systemd-fido2' <<<"${listing}"
+}
+
+verify_fido2() {
+    note "Verifying FIDO2 enrollment without creating a second root mapping."
+    note "Touch the key when prompted; if a PIN is requested, use the token PIN, not the disk passphrase."
+    # Restrict both the token type and fallback: a password or TPM unlock must
+    # never count as successful FIDO2 verification. No mapper is created.
+    cryptsetup open --type luks2 --test-passphrase --token-only \
+        --token-type systemd-fido2 "$1"
 }
 
 crypttab_is_tracked() {
@@ -169,13 +176,16 @@ merge_options() {
 write_crypttab_options() {
     local new_opts="$1"
 
-    cp -a "${CRYPTTAB}" "${CRYPTTAB_BACKUP}"
+    # Preserve the original configuration when resuming or changing PIN policy.
+    if [[ ! -e "${CRYPTTAB_BACKUP}" ]]; then
+        cp -a "${CRYPTTAB}" "${CRYPTTAB_BACKUP}"
+    fi
 
     # Rewrite only the single data line; comments are preserved verbatim.
     awk -v newopts="${new_opts}" '
         /^[[:space:]]*(#|$)/ { print; next }
         { print $1, $2, ($3 == "" ? "none" : $3), newopts }
-    ' "${CRYPTTAB_BACKUP}" >"${CRYPTTAB}.nirigo-new"
+    ' "${CRYPTTAB}" >"${CRYPTTAB}.nirigo-new"
 
     mv "${CRYPTTAB}.nirigo-new" "${CRYPTTAB}"
     chmod 0644 "${CRYPTTAB}"
@@ -206,7 +216,10 @@ cmd_status() {
     if initramfs_has_fido2; then
         echo "initramfs fido2:   present"
     else
-        echo "initramfs fido2:   MISSING"
+        case "$?" in
+        2) echo "initramfs fido2:   UNKNOWN (lsinitrd unavailable or inspection failed)" ;;
+        *) echo "initramfs fido2:   MISSING (libfido2 or systemd FIDO2 token plugin)" ;;
+        esac
     fi
 
     if crypttab_is_tracked; then
@@ -223,8 +236,15 @@ cmd_status() {
 }
 
 cmd_enroll() {
+    local pin="${1:-keep}"
+    case "${pin}" in
+    keep|yes|no) ;;
+    *) die "expected PIN policy: keep, yes, or no." ;;
+    esac
     require_root
     require_ostree
+    command -v cryptsetup >/dev/null 2>&1 ||
+        die "cryptsetup is required for FIDO2-only verification; install it before running setup."
 
     local dev
     dev="$(find_device)"
@@ -284,22 +304,28 @@ cmd_enroll() {
     read -r -p "Type YES once you have stored the recovery key off this machine: " answer
     [[ "${answer}" == "YES" ]] || die "aborted. The recovery key is enrolled; the FIDO2 token is not."
 
-    # 2. Enroll the token. --wipe-slot=fido2 makes re-running idempotent and is
-    #    applied *after* the new slot is created, so a failure here is not
-    #    destructive. The passphrase slot is never in scope.
-    note "Enrolling the FIDO2 token. You will be asked for your LUKS passphrase,"
-    note "then for the token PIN, then to touch the key."
-    systemd-cryptenroll --wipe-slot=fido2 --fido2-device=auto "${dev}" ||
-        die "FIDO2 enrollment failed; ${CRYPTTAB} and the initramfs are untouched."
+    # 2. Resume after a failed verification/sync without replacing credentials.
+    local slots
+    slots="$(systemd-cryptenroll "${dev}")" || die "could not inspect enrolled slots."
+    if [[ "${pin}" == keep ]] && grep -qi 'fido2' <<<"${slots}"; then
+        note "Reusing existing FIDO2 enrollment; no slots will be replaced."
+    else
+        # An explicit policy replaces the FIDO2 slot only after enrolling its
+        # replacement. Touch remains required even for PIN-less enrollment.
+        [[ "${pin}" != keep ]] || pin=yes
+        note "Enrolling the FIDO2 token. You will be asked for your LUKS passphrase,"
+        note "then to authenticate with the token. Unlock PIN required: ${pin}; touch required: yes."
+        systemd-cryptenroll --wipe-slot=fido2 --fido2-device=auto \
+            --fido2-with-client-pin="${pin}" --fido2-with-user-presence=yes \
+            --fido2-with-user-verification=no "${dev}" ||
+            die "FIDO2 enrollment failed; ${CRYPTTAB} and the initramfs are untouched."
+    fi
 
     # 3. Prove it works before touching anything boot-critical.
-    note "Verifying the enrollment by unlocking ${dev} offline. Touch the key again."
-    if "${SYSTEMD_CRYPTSETUP}" attach "${TEST_MAPPER}" "${dev}" none fido2-device=auto; then
-        "${SYSTEMD_CRYPTSETUP}" detach "${TEST_MAPPER}" || true
-        note "Offline unlock succeeded."
+    if verify_fido2 "${dev}"; then
+        note "FIDO2 key verification succeeded."
     else
-        "${SYSTEMD_CRYPTSETUP}" detach "${TEST_MAPPER}" 2>/dev/null || true
-        die "offline unlock failed. Leaving ${CRYPTTAB} and the initramfs alone. Run 'ujust luks-fido2-status' to inspect."
+        die "FIDO2 verification failed. Enrollment remains on disk; ${CRYPTTAB} and the initramfs are untouched. Check the error above (including availability of the systemd FIDO2 cryptsetup plugin), then rerun setup to retry verification."
     fi
 
     # 4. Only now touch boot configuration.
@@ -315,8 +341,8 @@ cmd_enroll() {
     write_crypttab_options "${new_opts}"
 
     if ! initramfs_has_fido2; then
-        warn "the running initramfs does not appear to contain the dracut fido2 module."
-        warn "Boot unlock will fall back to the passphrase. Check that ublue-os-luks"
+        warn "FIDO2 libraries/plugin could not be confirmed in the running initramfs."
+        warn "Boot FIDO2 support is not verified. Check that ublue-os-luks"
         warn "is installed and that /usr/lib/dracut/dracut.conf.d/90-ublue-luks.conf exists."
     fi
 
@@ -377,16 +403,20 @@ EOF
 
 usage() {
     cat <<EOF
-Usage: ${0##*/} {enroll|remove|status}
+Usage: ${0##*/} {enroll [keep|yes|no]|remove|status}
 
   enroll   Enroll a FIDO2 token as a LUKS unlock method and wire up the initramfs.
+           keep (default): reuse enrollment, or enroll with PIN + touch.
+           yes/no: replace FIDO2 enrollment with/without unlock PIN; require touch.
   remove   Wipe the FIDO2 keyslot and revert the boot configuration.
   status   Show the current enrollment and initramfs state.
 EOF
 }
 
+# Allow isolated function tests without running a privileged operation.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 case "${1:-}" in
-enroll) cmd_enroll ;;
+enroll) cmd_enroll "${2:-keep}" ;;
 remove) cmd_remove ;;
 status) cmd_status ;;
 *)
@@ -394,3 +424,4 @@ status) cmd_status ;;
     exit 1
     ;;
 esac
+fi

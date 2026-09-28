@@ -251,17 +251,36 @@ key then stops matching.
 ujust setup-luks-fido2-unlock
 ```
 
-This enrolls the token with `systemd-cryptenroll --fido2-device=auto`, which by
-default requires **both** the token PIN and a physical touch. Your existing LUKS
-passphrase is never removed and remains the fallback.
+New enrollment requires **both** the token PIN and a physical touch by default.
+Rerunning setup reuses an existing FIDO2 enrollment and retries verification and
+boot configuration. Your existing LUKS passphrase remains the fallback.
+
+To explicitly replace FIDO2 enrollment with **touch-only** unlock (no PIN):
+
+```bash
+ujust setup-luks-fido2-unlock no
+```
+
+To replace it with **PIN + touch** again:
+
+```bash
+ujust setup-luks-fido2-unlock yes
+```
+
+These policies require reenrollment; they do not change the YubiKey's global PIN.
+Touch-only allows someone holding the key to unlock this disk without knowing a
+PIN. Token policy may still require authentication during credential creation.
 
 The recipe does four things the equivalent upstream scripts do not:
 
 1. Enrolls a **recovery key first** and refuses to continue until you confirm
    you have copied it off the machine. Losing or resetting a YubiKey must not
    be able to cost you the volume.
-2. **Proves the enrollment works offline** with `systemd-cryptsetup attach`
-   before touching anything boot-critical. If that fails, nothing is changed.
+2. **Verifies the FIDO2 key** with `cryptsetup open --test-passphrase --token-only
+   --token-type systemd-fido2`, without creating a second mapping of the running
+   root volume or accepting passphrase/TPM fallback. This requires `cryptsetup`
+   and its systemd FIDO2 token plugin. If verification fails, enrollment remains
+   on disk, but crypttab and the initramfs are untouched. Rerun setup to resume.
 3. Writes a well-formed four-field `/etc/crypttab` line and keeps a backup at
    `/etc/crypttab.nirigo-fido2.bak`.
 4. Uses `rpm-ostree initramfs-etc --track=/etc/crypttab` instead of
@@ -278,8 +297,9 @@ injects the file and re-syncs it into every new deployment.
 The dracut `fido2` module is already present: the base image ships
 `ublue-os-luks`, which drops in
 `/usr/lib/dracut/dracut.conf.d/90-ublue-luks.conf` with
-`add_dracutmodules+=" fido2 tpm2-tss pkcs11 pcsc "`. The recipe verifies this
-rather than assuming it.
+`add_dracutmodules+=" fido2 tpm2-tss pkcs11 pcsc "`. The helper checks the initramfs
+for libfido2 and the systemd FIDO2 token plugin. An inspection failure is reported
+as unknown rather than as confirmed support.
 
 To inspect or undo:
 
