@@ -15,12 +15,30 @@ id() {
     case "$1" in
         -u) printf '%s\\n' "\${TEST_UID:-1000}" ;;
         -un) printf '%s\\n' 'desktop-user' ;;
+        -nG)
+            [[ "$2" == desktop-user ]] || return 99
+            printf '%s\\n' "\${TEST_MEMBERSHIPS:-desktop-user wheel ydotool}"
+            ;;
         *) return 99 ;;
     esac
 }
 sudo() {
+    if [[ "$*" == 'tee -a /etc/group' ]]; then
+        local entry
+        IFS= read -r entry
+        printf 'group-write:%s\\n' "$entry" >&2
+    fi
     printf 'sudo:%s\\n' "$*"
     [[ "$*" != "$TEST_FAIL" ]]
+}
+getent() {
+    if [[ "$*" == '-s files group ydotool' ]]; then
+        [[ "\${TEST_LOCAL_GROUP:-yes}" == yes ]] || return 2
+    elif [[ "$*" != 'group ydotool' ]]; then
+        return 99
+    fi
+    [[ "\${TEST_GROUP_MISSING:-no}" != yes ]] || return 2
+    printf '%s\\n' 'ydotool:x:987:existing-user'
 }
 systemctl() { printf 'user-systemctl:%s\\n' "$*"; }
 dms() {
@@ -68,4 +86,32 @@ test('keyboard setup stops on privilege, service and plugin installation failure
         assert.doesNotMatch(result.stdout, /Log out and back in/);
         if (failure !== 'dms') assert.doesNotMatch(result.stdout, /desktop-dms:/);
     }
+});
+
+test('image-only group is copied with its original GID and members; local groups are preserved', () => {
+    const imageOnly = run({ TEST_LOCAL_GROUP: 'no' });
+    assert.equal(imageOnly.status, 0, imageOnly.stderr);
+    assert.match(imageOnly.stderr, /group-write:ydotool:x:987:existing-user/);
+    assert.match(imageOnly.stdout, /Verified persistent ydotool membership/);
+    const local = run();
+    assert.equal(local.status, 0, local.stderr);
+    assert.doesNotMatch(local.stderr, /group-write:/);
+});
+
+test('missing group and failed copy stop before usermod', () => {
+    for (const extra of [
+        { TEST_GROUP_MISSING: 'yes' },
+        { TEST_FAIL: 'tee -a /etc/group' },
+    ]) {
+        const result = run({ TEST_LOCAL_GROUP: 'no', ...extra });
+        assert.notEqual(result.status, 0);
+        assert.doesNotMatch(result.stdout, /sudo:usermod|desktop-dms:/);
+    }
+});
+
+test('silent usermod no-op is detected without claiming success or starting services', () => {
+    const result = run({ TEST_MEMBERSHIPS: 'desktop-user wheel' });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /still not a member of ydotool/);
+    assert.doesNotMatch(result.stdout, /sudo:systemctl|desktop-dms:|Log out and back in/);
 });

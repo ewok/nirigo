@@ -335,6 +335,31 @@ and restart the daemon, then installs the upstream
 using `dms plugins install virtualKeyboard`. Plugin installation requires
 network access; plugin updates are managed through DMS.
 
+On Fedora Atomic, image-provided groups can live in `/usr/lib/group` instead
+of `/etc/group`. The helper copies the `ydotool` entry into the writable group
+database when needed, preserving its GID and existing members, before calling
+`usermod`. It verifies the saved membership with `id -nG <username>` and stops
+if the change did not take effect.
+
+If an older helper ran silently but `groups` still omits `ydotool` after a
+reboot, repair the membership from a Bash terminal as your desktop user:
+
+```bash
+(
+  set -euo pipefail
+  if ! getent -s files group ydotool >/dev/null; then
+    entry=$(getent group ydotool)
+    printf '%s\n' "$entry" | sudo tee -a /etc/group >/dev/null
+  fi
+  sudo usermod --append --groups ydotool "$(id -un)"
+  id -nG "$(id -un)"
+)
+```
+
+The last command should show `ydotool` immediately: specifying the username
+queries saved membership. Bare `groups` or `id -nG` show the running session's
+groups, which only change after logging out and back in.
+
 **Log out and back in** to apply group membership and the DMS environment.
 In **Settings → Plugins**, enable **Virtual Keyboard**, then add its widget
 under **Settings → DankBar** for touchscreen access. To toggle it from a

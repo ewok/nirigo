@@ -56,7 +56,21 @@ dms-keyboard-setup:
     exit 1
   fi
   sudo systemd-sysusers /usr/lib/sysusers.d/nirigo-ydotool.conf
-  sudo usermod --append --groups ydotool "$(id -un)"
+  # rpm-ostree can store image groups in /usr/lib/group (NSS altfiles).
+  # usermod needs a writable /etc/group entry, preserving the image's GID.
+  if ! getent -s files group ydotool >/dev/null; then
+    group_entry=$(getent group ydotool)
+    printf '%s\n' "$group_entry" | sudo tee -a /etc/group >/dev/null
+  fi
+  user=$(id -un)
+  sudo usermod --append --groups ydotool "$user"
+  # Query account membership, not the current session's stale group list.
+  memberships=$(id -nG "$user")
+  if [[ " $memberships " != *" ydotool "* ]]; then
+    printf 'error: %s is still not a member of ydotool; inspect getent group ydotool and /etc/group.\n' "$user" >&2
+    exit 1
+  fi
+  printf 'Verified persistent ydotool membership for %s.\n' "$user"
   sudo systemctl daemon-reload
   sudo systemctl enable ydotool.service
   sudo systemctl restart ydotool.service
