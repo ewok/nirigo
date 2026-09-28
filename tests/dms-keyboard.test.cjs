@@ -42,6 +42,10 @@ getent() {
     printf '%s\\n' 'ydotool:x:987:existing-user'
 }
 systemctl() { printf 'user-systemctl:%s\\n' "$*"; }
+ujust() {
+    printf 'ujust:%s\\n' "$*"
+    [[ "$*" == dms-qml-cache-reset ]]
+}
 dms() {
     printf 'desktop-dms:%s\\n' "$*"
     [[ "$TEST_FAIL" != dms ]]
@@ -81,10 +85,64 @@ test('keyboard setup links the bundled plugin without a registry install and exp
     assert.match(result.stdout, /sudo:systemctl enable ydotool.service/);
     assert.match(result.stdout, /sudo:systemctl restart ydotool.service/);
     assert.match(result.stdout, /Linked the image-owned Virtual Keyboard/);
+    assert.match(result.stdout, /ujust:dms-qml-cache-reset/);
     assert.doesNotMatch(result.stdout, /desktop-dms:/);
     assert.doesNotMatch(result.stdout, /sudo:dms/);
     assert.match(result.stdout, /Log out and back in/);
     assert.match(result.stdout, /enable Virtual Keyboard/);
+});
+
+test('one-shot cache reset removes only compiled QML and restores DMS on cleanup failures', () => {
+    const resetRecipe = justfile.split('dms-qml-cache-reset:\n')[1].split('\n\n')[0]
+        .split('\n').map(line => line.slice(2)).join('\n');
+    for (const failure of ['', 'remove', '--user stop dms.service',
+        '--user unset-environment QML_DISABLE_DISK_CACHE QML_IMPORT_TRACE']) {
+        const tmp = mkdtempSync(join(tmpdir(), 'qml-reset-'));
+        try {
+            const cacheHome = join(tmp, 'cache with spaces');
+            const cache = join(cacheHome, 'quickshell/qmlcache');
+            mkdirSync(cache, { recursive: true });
+            writeFileSync(join(cache, 'stale.qmlc'), 'old compiled code');
+            const unrelated = join(cacheHome, 'quickshell/keep.txt');
+            writeFileSync(unrelated, 'unrelated data');
+            const script = mocks + `
+systemctl() {
+    printf 'systemctl:%s\\n' "$*"
+    [[ "$*" != "$TEST_FAIL" ]]
+}
+rm() {
+    [[ "$TEST_FAIL" != remove ]] || return 1
+    command rm "$@"
+}
+` + resetRecipe;
+            const run = (extra = {}) => spawnSync('bash', ['-c', script], {
+                encoding: 'utf8',
+                env: { ...process.env, XDG_CACHE_HOME: cacheHome, TEST_FAIL: failure, ...extra },
+            });
+            const result = run();
+            assert.equal(result.status, failure ? 1 : 0, result.stderr);
+            assert.equal(readFileSync(unrelated, 'utf8'), 'unrelated data');
+            if (failure === 'remove' || failure === '--user stop dms.service') {
+                assert.equal(readFileSync(join(cache, 'stale.qmlc'), 'utf8'), 'old compiled code');
+            } else {
+                assert.throws(() => readdirSync(cache), { code: 'ENOENT' });
+            }
+            if (failure !== '--user stop dms.service') {
+                assert.match(result.stdout, /systemctl:--user start dms.service/);
+            }
+            if (!failure) {
+                assert.match(result.stdout, /QML cache will rebuild normally/);
+                assert.equal(run().status, 0); // Missing cache is harmless.
+                for (const extra of [{ TEST_UID: '0' }, { XDG_CACHE_HOME: 'relative' }]) {
+                    const rejected = run(extra);
+                    assert.equal(rejected.status, 1);
+                    assert.doesNotMatch(rejected.stdout, /systemctl:/);
+                }
+            }
+        } finally {
+            rmSync(tmp, { recursive: true, force: true });
+        }
+    }
 });
 
 test('keyboard setup rejects root and missing image configuration before changes', () => {

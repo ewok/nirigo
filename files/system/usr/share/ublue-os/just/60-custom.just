@@ -43,6 +43,29 @@ dms-setup:
 dms-greeter-sync:
   dms-greeter sync
 
+# Clear compiled QML once after plugin/image changes, keeping normal caching.
+dms-qml-cache-reset:
+  #!/usr/bin/env bash
+  set -Eeuo pipefail
+  if [[ $(id -u) == 0 ]]; then
+    printf 'Run ujust dms-qml-cache-reset as your desktop user, without sudo.\n' >&2
+    exit 1
+  fi
+  # Qt CacheLocation uses Quickshell's application name, not the DMS name.
+  cache="${XDG_CACHE_HOME:-$HOME/.cache}/quickshell/qmlcache"
+  if [[ "$cache" != /* ]]; then
+    printf 'error: XDG_CACHE_HOME must be an absolute path.\n' >&2
+    exit 1
+  fi
+  systemctl --user stop dms.service
+  # Restore the shell even if cache removal or environment cleanup fails.
+  trap 'systemctl --user start dms.service' EXIT
+  rm -rf -- "$cache"
+  systemctl --user unset-environment QML_DISABLE_DISK_CACHE QML_IMPORT_TRACE
+  systemctl --user start dms.service
+  trap - EXIT
+  printf 'Cleared %s and restarted DMS. QML cache will rebuild normally.\n' "$cache"
+
 # Grant socket access and link the image-owned, non-focusing keyboard.
 dms-keyboard-setup:
   #!/usr/bin/env bash
@@ -98,9 +121,9 @@ dms-keyboard-setup:
     ln -sT -- "$source" "$target"
   fi
   printf 'Linked the image-owned Virtual Keyboard (docked and movable focus fixes).\n'
+  ujust dms-qml-cache-reset
   printf 'Log out and back in to apply group membership and the DMS socket environment.\n'
   printf 'In DMS Settings → Plugins, scan and enable Virtual Keyboard.\n'
-  printf 'If already enabled, restart DMS to load the patched plugin: dms restart\n'
   printf 'Add its widget to your DankBar layout for touchscreen access.\n'
   printf 'Toggle it with: dms ipc call virtualKeyboard toggle\n'
 

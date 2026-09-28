@@ -341,9 +341,30 @@ existing `plugins/virtualKeyboard` directory or symlink and its `.meta` file
 into a uniquely named directory under
 `${XDG_CONFIG_HOME:-$HOME/.config}/DankMaterialShell/plugin-backups/`, then
 creates the image-owned link. Existing DMS plugin settings and widget IDs
-are retained. Repeated setup leaves the correct link alone. Restart DMS
-(`dms restart`) after migrating an already enabled plugin. Use the bundled
+are retained. Repeated setup leaves the correct link alone. The helper clears
+the compiled QML cache and restarts DMS after linking the plugin. Use the bundled
 copy rather than reinstalling the registry version, which lacks these fixes.
+
+On-device testing found that cached QML continued loading the original,
+focusable keyboard even though the symlink and installed sources were correct;
+bypassing the disk cache made the patched keyboard work. To invalidate that
+cache once after a plugin or image update, run as your desktop user:
+
+```bash
+ujust dms-qml-cache-reset
+```
+
+The keyboard setup helper calls this automatically. It stops DMS, removes
+`${XDG_CACHE_HOME:-$HOME/.cache}/quickshell/qmlcache`, clears the temporary
+`QML_DISABLE_DISK_CACHE`/`QML_IMPORT_TRACE` service-manager settings, and starts
+DMS again. Qt rebuilds the compiled QML cache normally; settings, downloaded
+plugins, wallpapers and other caches are preserved. This cache directory is
+shared by Quickshell configurations, not exclusive to DMS.
+
+If you previously added `Environment=QML_DISABLE_DISK_CACHE=1` through
+`systemctl --user edit dms.service`, remove that line and run
+`systemctl --user daemon-reload` before resetting the cache. The helper does
+not rewrite your personal service overrides.
 
 On Fedora Atomic, image-provided groups can live in `/usr/lib/group` instead
 of `/etc/group`. The helper copies the `ydotool` entry into the writable group
