@@ -32,6 +32,18 @@ gpgkey=${COPR_URL}/pubkey.gpg
 repo_gpgcheck=0
 enabled=0
 includepkgs=gamescope*,xorg-x11-server-Xwayland*
+
+# Bazzite's gamescope requires gamescope-libs(x86-32); COPR publishes the
+# 32-bit builds in a separate i386 chroot.
+[${REPO_ID}-i386]
+name=Bazzite multilib COPR i386 (gamescope only)
+baseurl=${COPR_URL}/fedora-\$releasever-i386/
+type=rpm-md
+gpgcheck=1
+gpgkey=${COPR_URL}/pubkey.gpg
+repo_gpgcheck=0
+enabled=0
+includepkgs=gamescope*
 EOF
 
 DNF=dnf5
@@ -42,7 +54,8 @@ command -v "$DNF" >/dev/null 2>&1 || DNF=dnf
 "$DNF" -y install \
     --setopt=install_weak_deps=False \
     --enablerepo="$REPO_ID" \
-    --from-repo="$REPO_ID" \
+    --enablerepo="${REPO_ID}-i386" \
+    --from-repo="${REPO_ID},${REPO_ID}-i386" \
     gamescope
 
 release="$(rpm -q --qf '%{RELEASE}' gamescope)"
