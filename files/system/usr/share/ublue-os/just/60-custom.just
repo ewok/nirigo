@@ -283,9 +283,61 @@ install-nix:
 remove-nix:
   sudo /nix/nix-installer uninstall
 
-install-bazzite-arch:
+# Flatpak Steam cannot see the host gamescope. Install the Flathub gamescope
+# Vulkan layer matching Steam's runtime so `gamescope -- %command%` launch
+# options work per game. Not needed for the "Steam (Gamescope)" launcher or the
+# Game Mode session, which wrap Steam with the image's gamescope.
+steam-gamescope-layer:
   #!/usr/bin/env bash
-  distrobox-create --unshare-netns --nvidia --image ghcr.io/ublue-os/bazzite-arch --name bazzite-arch -Y
-  distrobox-enter -n bazzite-arch -- distrobox-export --app steam
-  distrobox-enter -n bazzite-arch -- distrobox-export --app lutris
-  distrobox-enter -n bazzite-arch -- distrobox-export --app protontricks
+  set -euo pipefail
+  app=com.valvesoftware.Steam
+  if flatpak info --user "$app" >/dev/null 2>&1; then
+    scope=--user
+  elif flatpak info --system "$app" >/dev/null 2>&1; then
+    scope=--system
+  else
+    echo "error: $app is not installed." >&2
+    exit 1
+  fi
+  runtime=$(flatpak info "$scope" --show-runtime "$app")
+  branch=${runtime##*/}
+  ref="runtime/org.freedesktop.Platform.VulkanLayer.gamescope/x86_64/$branch"
+  echo "Installing $ref ($scope) for $app ($runtime)"
+  flatpak install "$scope" -y flathub "$ref"
+  echo "Done. Use launch options like: gamescope -W 2560 -H 1600 -r 144 -f -- %command%"
+
+# Per-user overrides for /usr/libexec/nirigo-gamescope-steam.
+gamescope-config:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  conf="${XDG_CONFIG_HOME:-$HOME/.config}/nirigo/gamescope.conf"
+  if [[ -e "$conf" ]]; then
+    echo "$conf already exists, not overwriting."
+    exit 0
+  fi
+  mkdir -p "$(dirname "$conf")"
+  cat >"$conf" <<'EOF'
+  # Sourced by /usr/libexec/nirigo-gamescope-steam (bash syntax).
+  # Uncomment and edit; unset arrays keep the image defaults.
+
+  # Used in both the desktop launcher and the Game Mode session.
+  # Default: native Legion Go panel with Steam integration.
+  #NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -r 144 -e)
+
+  # Example: render at 1920x1200 and upscale to the panel with FSR.
+  #NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -w 1920 -h 1200 -F fsr -r 144 -e)
+
+  # Extra flags for the "Steam (Gamescope)" launcher inside niri.
+  #NIRIGO_GAMESCOPE_NESTED_ARGS=(-f)
+
+  # Extra flags for the "Steam (Game Mode)" session. If the picture is rotated,
+  # add --force-orientation left (or right).
+  #NIRIGO_GAMESCOPE_SESSION_ARGS=(--adaptive-sync)
+
+  # Arguments passed to Steam.
+  #NIRIGO_STEAM_ARGS=(-gamepadui)
+
+  # Seconds to wait for an already running Steam to exit.
+  #NIRIGO_STEAM_SHUTDOWN_TIMEOUT=20
+  EOF
+  echo "Wrote $conf"

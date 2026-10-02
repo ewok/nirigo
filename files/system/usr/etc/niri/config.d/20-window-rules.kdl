@@ -12,3 +12,12 @@ window-rule {
     match title=r#"(?i)^picture[- ]in[- ]picture$"#
     open-floating true
 }
+
+// Nested gamescope ("Steam (Gamescope)" launcher): borderless fullscreen.
+window-rule {
+    match app-id="gamescope"
+    open-fullscreen true
+    draw-border-with-background false
+    border { off; }
+    focus-ring { off; }
+}

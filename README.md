@@ -576,17 +576,55 @@ the `login` keyring and change its password to match. `pam_gnome_keyring` in
 
 ## Post-install
 
-If you want to install Bazzite-arch in distrobox(to run Steam):
-
-```
-ujust install-bazzite-arch
-```
-
 To install nix:
 
 ```
 ujust install-nix
 ```
+
+## Gaming with gamescope
+
+The image ships Bazzite's patched `gamescope` (installed from the
+`bazzite-org/bazzite-multilib` COPR by `files/scripts/install-gamescope.sh`;
+only gamescope is taken from that repo) and Steam from Flathub
+(`com.valvesoftware.Steam`, system scope).
+
+There are three ways to run games in gamescope:
+
+1. **Steam (Gamescope)** launcher in the app menu: runs Steam Big Picture
+   inside a fullscreen, nested gamescope on the niri desktop. Every game Steam
+   starts runs in gamescope, without per-game launch options.
+2. **Steam (Game Mode)** session in the greeter: gamescope drives the display
+   directly, similar to SteamOS/Bazzite Game Mode. Leave it with
+   Power → Exit Steam, which returns to the greeter.
+3. **Per-game launch options** (`gamescope -W 2560 -H 1600 -r 144 -f -- %command%`)
+   in regular desktop Steam. Flatpak Steam cannot see the host gamescope, so
+   install the matching Flathub Vulkan layer first:
+
+   ```
+   ujust steam-gamescope-layer
+   ```
+
+   This is a stock gamescope build, not Bazzite's.
+
+Both the launcher and the session use `/usr/libexec/nirigo-gamescope-steam`.
+It defaults to the native panel (2560x1600 @ 144 Hz). To override
+resolution, FSR upscaling, orientation or Steam arguments:
+
+```
+ujust gamescope-config   # creates ~/.config/nirigo/gamescope.conf
+```
+
+Limitations:
+
+- If Steam is already running, the wrapper shuts it down first. Otherwise
+  Steam would open outside gamescope.
+- Steam's "Switch to Desktop" does nothing in Game Mode, because Flatpak Steam
+  cannot run `steamos-session-select` on the host.
+- If the Game Mode picture is rotated, add `--force-orientation left` (or
+  `right`) to `NIRIGO_GAMESCOPE_SESSION_ARGS`.
+- With Steam installed in both user and system scope, the user install is
+  used. Check with `flatpak list --app | grep -i steam`.
 
 ## ISO
 
@@ -599,7 +637,9 @@ Local migration checks (requires Bats and ShellCheck):
 ```bash
 bats tests/migration.bats
 shellcheck files/scripts/check-niri-config-drift.sh files/scripts/remove-packages.sh \
-  files/scripts/niri-dropins.sh files/system/usr/libexec/rotatetdp.sh tests/migration.bats
+  files/scripts/niri-dropins.sh files/scripts/install-gamescope.sh \
+  files/system/usr/libexec/rotatetdp.sh files/system/usr/libexec/nirigo-gamescope-steam \
+  files/system/usr/libexec/nirigo-gamescope-session tests/migration.bats
 ```
 
 TDP plugin backend and TDP/keyboard setup-helper checks (requires Node.js):

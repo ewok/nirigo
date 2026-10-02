@@ -98,6 +98,12 @@ modules:
         - acl
         - libnotify
 
+  # Bazzite's patched gamescope. Its COPR replaces many core packages, so the
+  # script enables it for this single install and removes it afterwards.
+  - type: script
+    scripts:
+      - install-gamescope.sh
+
   # Removals live in a script instead of the module's `remove:` list so that
   # packages missing from the base image don't abort the build.
   - type: script
@@ -127,6 +133,8 @@ modules:
         install:
           - com.vivaldi.Vivaldi
           - org.gnome.Loupe
+          # Wrapped by gamescope via /usr/libexec/nirigo-gamescope-steam.
+          - com.valvesoftware.Steam
 
   - type: systemd
     system:

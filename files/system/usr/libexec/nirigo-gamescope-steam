@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Run Flatpak Steam (Big Picture) inside gamescope, so every game Steam starts
+# is composited by gamescope without per-game launch options.
+#
+#   nirigo-gamescope-steam            nested in the niri desktop
+#   nirigo-gamescope-steam --session  gamescope drives the display (Game Mode)
+#
+# Per-user overrides: ~/.config/nirigo/gamescope.conf (bash, sourced).
+# `ujust gamescope-config` creates a commented template.
+set -uo pipefail
+
+APP=com.valvesoftware.Steam
+
+mode=nested
+case "${1:-}" in
+    '') ;;
+    --session) mode=session ;;
+    *)
+        echo "usage: ${0##*/} [--session]" >&2
+        exit 2
+        ;;
+esac
+
+# Defaults: native Legion Go panel (2560x1600 @ 144 Hz) with Steam integration.
+NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -r 144 -e)
+NIRIGO_GAMESCOPE_NESTED_ARGS=(-f)
+NIRIGO_GAMESCOPE_SESSION_ARGS=(--adaptive-sync)
+NIRIGO_STEAM_ARGS=(-gamepadui)
+NIRIGO_STEAM_SHUTDOWN_TIMEOUT=20
+
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/nirigo/gamescope.conf"
+if [[ -r $conf ]]; then
+    # shellcheck source=/dev/null
+    source "$conf"
+fi
+
+fail() {
+    echo "${0##*/}: $1" >&2
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send -a "Steam (Gamescope)" "Steam (Gamescope)" "$1" 2>/dev/null || true
+    fi
+    exit 1
+}
+
+steam_running() {
+    flatpak ps --columns=application 2>/dev/null | grep -qx "$APP"
+}
+
+command -v gamescope >/dev/null 2>&1 || fail "gamescope is not installed."
+
+# Prefer a user install when Steam exists in both scopes.
+if flatpak info --user "$APP" >/dev/null 2>&1; then
+    scope=--user
+elif flatpak info --system "$APP" >/dev/null 2>&1; then
+    scope=--system
+else
+    fail "Steam is not installed. Run: flatpak install flathub $APP"
+fi
+
+# A running Steam would receive the launch request and open its window outside
+# gamescope, so stop it first.
+if steam_running; then
+    flatpak run "$scope" "$APP" -shutdown >/dev/null 2>&1 || true
+    waited=0
+    while steam_running; do
+        if ((waited >= NIRIGO_STEAM_SHUTDOWN_TIMEOUT)); then
+            fail "Steam is still running. Exit Steam and try again."
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+fi
+
+args=("${NIRIGO_GAMESCOPE_ARGS[@]}")
+if [[ $mode == session ]]; then
+    args+=("${NIRIGO_GAMESCOPE_SESSION_ARGS[@]}")
+else
+    args+=("${NIRIGO_GAMESCOPE_NESTED_ARGS[@]}")
+fi
+
+exec gamescope "${args[@]}" -- flatpak run "$scope" "$APP" "${NIRIGO_STEAM_ARGS[@]}"

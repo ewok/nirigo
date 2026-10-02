@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# greetd entry point for the "Steam (Game Mode)" session: gamescope drives the
+# display directly and runs Flatpak Steam in Big Picture. Exiting Steam
+# (Power -> Exit Steam) ends the session and returns to the greeter.
+#
+# Flatpak Steam cannot call steamos-session-select, so Steam's
+# "Switch to Desktop" does not work here.
+set -uo pipefail
+
+export XDG_CURRENT_DESKTOP=gamescope
+export XDG_SESSION_DESKTOP=gamescope
+# Let Steam offer its VRR toggle; gamescope gets --adaptive-sync by default.
+export STEAM_GAMESCOPE_VRR_SUPPORTED=1
+
+exec /usr/libexec/nirigo-gamescope-steam --session
