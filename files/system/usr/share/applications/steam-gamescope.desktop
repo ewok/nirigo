@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=Steam (Gamescope)
-Comment=Steam Big Picture inside gamescope
-Exec=/usr/libexec/nirigo-gamescope-steam
+Name=Steam (Big Picture)
+Comment=Steam Big Picture as a fullscreen niri window
+Exec=/usr/libexec/nirigo-gamescope-steam --direct
 Icon=com.valvesoftware.Steam
 Terminal=false
 Type=Application
 Categories=Game;
-Keywords=steam;gamescope;games;
+Keywords=steam;bigpicture;games;

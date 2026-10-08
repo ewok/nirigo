@@ -106,6 +106,20 @@ SH
     [ "$(cat "$GS_CALLS")" = "-W 2560 -H 1600 -r 144 -f -- flatpak run --system com.valvesoftware.Steam -gamepadui -steamos3 -steampal -steamdeck" ]
 }
 
+@test "direct launcher runs Steam without gamescope or Deck flags" {
+    gamescope_stubs
+    touch "$FP_RUNNING"
+    mkdir -p "$XDG_CONFIG_HOME/nirigo"
+    echo 'NIRIGO_STEAM_ARGS=(-gamepadui -steamos3 -steampal -steamdeck)' >"$XDG_CONFIG_HOME/nirigo/gamescope.conf"
+    rm "$BATS_TEST_TMPDIR/bin/gamescope"
+    run bash "$repo/files/system/usr/libexec/nirigo-gamescope-steam" --direct
+    [ "$status" -eq 0 ]
+    [ "$(tail -n1 "$FP_CALLS")" = "run --system com.valvesoftware.Steam -gamepadui" ]
+    run grep -c -- '-shutdown' "$FP_CALLS"
+    [ "$output" = 0 ]
+    [ ! -e "$GS_CALLS" ]
+}
+
 @test "gamescope wrapper prefers user Steam and uses session flags" {
     gamescope_stubs
     export FP_USER=1
@@ -180,7 +194,8 @@ CONF
     [ -x "$repo/files/system/usr/libexec/nirigo-gamescope-session" ]
     [ -x "$repo/files/scripts/install-gamescope.sh" ]
     grep -qx 'Exec=/usr/libexec/nirigo-gamescope-session' "$repo/files/system/usr/share/wayland-sessions/steam-gamescope.desktop"
-    grep -qx 'Exec=/usr/libexec/nirigo-gamescope-steam' "$repo/files/system/usr/share/applications/steam-gamescope.desktop"
+    grep -qx 'Exec=/usr/libexec/nirigo-gamescope-steam --direct' "$repo/files/system/usr/share/applications/steam-gamescope.desktop"
+    grep -q 'match app-id="steam" title="^Steam Big Picture Mode\$"' "$repo/files/system/usr/etc/niri/config.d/20-window-rules.kdl"
     grep -q 'exec /usr/libexec/nirigo-gamescope-steam --session' "$repo/files/system/usr/libexec/nirigo-gamescope-session"
     grep -q 'install-gamescope.sh' "$repo/recipes/recipe.yml"
     grep -q 'com.valvesoftware.Steam' "$repo/recipes/recipe.yml"

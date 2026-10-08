@@ -21,3 +21,22 @@ window-rule {
     border { off; }
     focus-ring { off; }
 }
+
+// "Steam (Big Picture)" launcher runs Steam directly in niri (no gamescope),
+// so niri owns focus and the gamepad keeps working after Steam's Guide menus.
+// Only the Big Picture window is matched; desktop Steam windows stay tiled.
+window-rule {
+    match app-id="steam" title="^Steam Big Picture Mode$"
+    open-fullscreen true
+    draw-border-with-background false
+    border { off; }
+    focus-ring { off; }
+}
+
+// Games started by Steam (XWayland class steam_app_<id>).
+window-rule {
+    match app-id=r#"^steam_app_\d+$"#
+    open-fullscreen true
+    border { off; }
+    focus-ring { off; }
+}

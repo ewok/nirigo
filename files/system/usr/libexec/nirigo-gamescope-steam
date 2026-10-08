@@ -2,7 +2,8 @@
 # Run Flatpak Steam (Big Picture) inside gamescope, so every game Steam starts
 # is composited by gamescope without per-game launch options.
 #
-#   nirigo-gamescope-steam            nested in the niri desktop
+#   nirigo-gamescope-steam --direct   Big Picture as a plain niri window (desktop launcher)
+#   nirigo-gamescope-steam            nested gamescope in the niri desktop
 #   nirigo-gamescope-steam --session  gamescope drives the display (Game Mode)
 #
 # Per-user overrides: ~/.config/nirigo/gamescope.conf (bash, sourced).
@@ -15,8 +16,9 @@ mode=nested
 case "${1:-}" in
     '') ;;
     --session) mode=session ;;
+    --direct) mode=direct ;;
     *)
-        echo "usage: ${0##*/} [--session]" >&2
+        echo "usage: ${0##*/} [--direct|--session]" >&2
         exit 2
         ;;
 esac
@@ -33,12 +35,18 @@ esac
 # so they are nested-only.
 #
 # Touch does not work nested: gamescope's Wayland backend ignores wl_touch.
+#
+# Direct mode (the desktop launcher) skips gamescope. Nested, Steam's Guide
+# menus (Quick Access, Legion+Y) left Big Picture without gamepad focus while
+# touch, mouse and keyboard kept working. As a normal niri window, focus
+# follows niri. The Deck flags are not needed there.
 NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -r 144)
 NIRIGO_GAMESCOPE_NESTED_ARGS=(-f)
 NIRIGO_GAMESCOPE_SESSION_ARGS=(-e --adaptive-sync)
 NIRIGO_STEAM_ARGS=(-gamepadui)
 NIRIGO_STEAM_NESTED_ARGS=(-steamos3 -steampal -steamdeck)
 NIRIGO_STEAM_SESSION_ARGS=()
+NIRIGO_STEAM_DIRECT_ARGS=(-gamepadui)
 NIRIGO_STEAM_SHUTDOWN_TIMEOUT=20
 
 conf="${XDG_CONFIG_HOME:-$HOME/.config}/nirigo/gamescope.conf"
@@ -69,7 +77,9 @@ steam_running() {
     return 1
 }
 
-command -v gamescope >/dev/null 2>&1 || fail "gamescope is not installed."
+if [[ $mode != direct ]]; then
+    command -v gamescope >/dev/null 2>&1 || fail "gamescope is not installed."
+fi
 
 # Prefer a user install when Steam exists in both scopes.
 if flatpak info --user "$APP" >/dev/null 2>&1; then
@@ -78,6 +88,11 @@ elif flatpak info --system "$APP" >/dev/null 2>&1; then
     scope=--system
 else
     fail "Steam is not installed. Run: flatpak install flathub $APP"
+fi
+
+# A running desktop Steam just switches to Big Picture, so no restart needed.
+if [[ $mode == direct ]]; then
+    exec flatpak run "$scope" "$APP" "${NIRIGO_STEAM_DIRECT_ARGS[@]}"
 fi
 
 # A running Steam would receive the launch request and open its window outside

@@ -606,24 +606,28 @@ To install nix:
 ujust install-nix
 ```
 
-## Gaming with gamescope
+## Gaming with Steam and gamescope
 
 The image ships Bazzite's patched `gamescope` (installed from the
 `bazzite-org/bazzite-multilib` COPR by `files/scripts/install-gamescope.sh`;
 only gamescope is taken from that repo) and Steam from Flathub
 (`com.valvesoftware.Steam`, system scope).
 
-There are three ways to run games in gamescope:
+There are three ways to run Steam:
 
-1. **Steam (Gamescope)** launcher in the app menu: runs Steam Big Picture
-   inside a fullscreen, nested gamescope on the niri desktop. Every game Steam
-   starts runs in gamescope, without per-game launch options.
+1. **Steam (Big Picture)** launcher in the app menu: runs Steam Big Picture
+   directly as a fullscreen niri window, without gamescope
+   (`nirigo-gamescope-steam --direct`). niri window rules make the Big Picture
+   window and games (`steam_app_*`) fullscreen. Touch, gamepad, mouse and
+   keyboard all work, and the gamepad keeps working after Steam's Guide menus
+   (Quick Access, Legion+Y). There is no gamescope upscaling or Steam
+   Performance panel here; set TDP with the DMS Legion Go TDP widget.
 2. **Steam (Game Mode)** session in the greeter: gamescope drives the display
    directly, similar to SteamOS/Bazzite Game Mode. Leave it with
    Power → Exit Steam, which returns to the greeter.
 3. **Per-game launch options** (`gamescope -W 2560 -H 1600 -r 144 -f -- %command%`)
-   in regular desktop Steam. Flatpak Steam cannot see the host gamescope, so
-   install the matching Flathub Vulkan layer first:
+   in Steam. Flatpak Steam cannot see the host gamescope, so install the
+   matching Flathub Vulkan layer first:
 
    ```
    ujust steam-gamescope-layer
@@ -631,32 +635,36 @@ There are three ways to run games in gamescope:
 
    This is a stock gamescope build, not Bazzite's.
 
-Both the launcher and the session use `/usr/libexec/nirigo-gamescope-steam`.
-It defaults to the native panel (2560x1600 @ 144 Hz). To override
+The launcher used to run Steam inside a nested gamescope. There, after Steam
+opened a Guide menu, Big Picture stopped taking gamepad input while touch,
+mouse and keyboard still worked: HHD kept sending the buttons, but Steam
+treated its window as unfocused. Nested mode is still available as
+`/usr/libexec/nirigo-gamescope-steam` without arguments.
+
+The launcher and the session both use `/usr/libexec/nirigo-gamescope-steam`.
+Gamescope modes default to the native panel (2560x1600 @ 144 Hz). To override
 resolution, FSR upscaling, orientation or Steam arguments:
 
 ```
 ujust gamescope-config   # creates ~/.config/nirigo/gamescope.conf
 ```
 
+The launcher only uses `NIRIGO_STEAM_DIRECT_ARGS` (default `-gamepadui`).
+`NIRIGO_STEAM_ARGS` does not apply to it, so SteamOS flags set there for
+nested mode do not reach it.
+
 Limitations:
 
-- If Steam is already running, the wrapper shuts it down first. Otherwise
-  Steam would open outside gamescope. Stale `flatpak ps` entries whose PID is
-  gone are ignored, since asking a non-running Steam to shut down would close
-  the new Steam inside gamescope.
-- The desktop launcher runs gamescope without Steam integration (`-e`),
-  because nested in niri it sends mouse and keyboard clicks to the wrong
-  window. As a result, Steam's Quick Access/Performance controls (FPS limit,
-  FSR, refresh rate) and the overlay over games may not work there. Use Game
-  Mode, which keeps `-e`, for those.
-- The desktop launcher starts Steam with `-steamos3 -steampal -steamdeck`.
-  Without them Big Picture turns black after the startup animation. These
-  flags are not used in Game Mode, because together with `-e` Steam does not
-  start.
-- The touchscreen does not work in the desktop launcher: gamescope's nested
-  Wayland backend does not read touch events. Use mouse, keyboard or gamepad
-  there, or Game Mode for touch.
+- In gamescope modes, a running Steam is shut down first. Otherwise Steam
+  would open outside gamescope. Stale `flatpak ps` entries whose PID is gone
+  are ignored, since asking a non-running Steam to shut down would close the
+  new Steam inside gamescope. The direct launcher does not restart Steam: a
+  running desktop Steam switches to Big Picture.
+- Nested gamescope runs without Steam integration (`-e`), because nested in
+  niri it sends mouse and keyboard clicks to the wrong window. It starts Steam
+  with `-steamos3 -steampal -steamdeck`, otherwise Big Picture turns black
+  after the startup animation. These flags are not used in Game Mode, because
+  together with `-e` Steam does not start. Touch does not work nested.
 - Steam's "Switch to Desktop" does nothing in Game Mode, because Flatpak Steam
   cannot run `steamos-session-select` on the host.
 - If the Game Mode picture is rotated, add `--force-orientation left` (or

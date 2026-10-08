@@ -285,8 +285,9 @@ remove-nix:
 
 # Flatpak Steam cannot see the host gamescope. Install the Flathub gamescope
 # Vulkan layer matching Steam's runtime so `gamescope -- %command%` launch
-# options work per game. Not needed for the "Steam (Gamescope)" launcher or the
-# Game Mode session, which wrap Steam with the image's gamescope.
+# options work per game. Not needed for the Game Mode session, which wraps
+# Steam with the image's gamescope. The "Steam (Big Picture)" launcher runs
+# Steam without gamescope, so use this for per-game gamescope there.
 steam-gamescope-layer:
   #!/usr/bin/env bash
   set -euo pipefail
@@ -320,14 +321,15 @@ gamescope-config:
   # Sourced by /usr/libexec/nirigo-gamescope-steam (bash syntax).
   # Uncomment and edit; unset arrays keep the image defaults.
 
-  # Used in both the desktop launcher and the Game Mode session.
+  # Used by the Game Mode session and the nested mode
+  # (`nirigo-gamescope-steam` without arguments).
   # Default: native Legion Go panel.
   #NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -r 144)
 
   # Example: render at 1920x1200 and upscale to the panel with FSR.
   #NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -w 1920 -h 1200 -F fsr -r 144)
 
-  # Extra flags for the "Steam (Gamescope)" launcher inside niri.
+  # Extra flags for nested gamescope inside niri.
   # Do not add -e (Steam integration) here: nested, it breaks mouse and
   # keyboard input in Steam.
   #NIRIGO_GAMESCOPE_NESTED_ARGS=(-f)
@@ -337,10 +339,14 @@ gamescope-config:
   # is rotated, add --force-orientation left (or right).
   #NIRIGO_GAMESCOPE_SESSION_ARGS=(-e --adaptive-sync)
 
-  # Arguments passed to Steam in both modes.
+  # Steam arguments for the "Steam (Big Picture)" launcher (no gamescope).
+  # Do not add the SteamOS flags here.
+  #NIRIGO_STEAM_DIRECT_ARGS=(-gamepadui)
+
+  # Arguments passed to Steam in nested and Game Mode.
   #NIRIGO_STEAM_ARGS=(-gamepadui)
 
-  # Extra Steam arguments for the launcher inside niri. Without the SteamOS
+  # Extra Steam arguments for nested gamescope. Without the SteamOS
   # flags Big Picture turns black after the startup animation. If it is still
   # black, append -cef-disable-gpu-compositing.
   #NIRIGO_STEAM_NESTED_ARGS=(-steamos3 -steampal -steamdeck)
