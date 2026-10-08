@@ -337,8 +337,17 @@ gamescope-config:
   # is rotated, add --force-orientation left (or right).
   #NIRIGO_GAMESCOPE_SESSION_ARGS=(-e --adaptive-sync)
 
-  # Arguments passed to Steam.
+  # Arguments passed to Steam in both modes.
   #NIRIGO_STEAM_ARGS=(-gamepadui)
+
+  # Extra Steam arguments for the launcher inside niri. Without the SteamOS
+  # flags Big Picture turns black after the startup animation. If it is still
+  # black, append -cef-disable-gpu-compositing.
+  #NIRIGO_STEAM_NESTED_ARGS=(-steamos3 -steampal -steamdeck)
+
+  # Extra Steam arguments for the Game Mode session. Do not add the SteamOS
+  # flags together with -e: Steam then fails to start.
+  #NIRIGO_STEAM_SESSION_ARGS=()
 
   # Seconds to wait for an already running Steam to exit.
   #NIRIGO_STEAM_SHUTDOWN_TIMEOUT=20

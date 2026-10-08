@@ -631,6 +631,13 @@ Limitations:
   window. As a result, Steam's Quick Access/Performance controls (FPS limit,
   FSR, refresh rate) and the overlay over games may not work there. Use Game
   Mode, which keeps `-e`, for those.
+- The desktop launcher starts Steam with `-steamos3 -steampal -steamdeck`.
+  Without them Big Picture turns black after the startup animation. These
+  flags are not used in Game Mode, because together with `-e` Steam does not
+  start.
+- The touchscreen does not work in the desktop launcher: gamescope's nested
+  Wayland backend does not read touch events. Use mouse, keyboard or gamepad
+  there, or Game Mode for touch.
 - Steam's "Switch to Desktop" does nothing in Game Mode, because Flatpak Steam
   cannot run `steamos-session-select` on the host.
 - If the Game Mode picture is rotated, add `--force-orientation left` (or

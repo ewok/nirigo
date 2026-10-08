@@ -26,10 +26,19 @@ esac
 # lets Steam drive window focus and mouse/keyboard clicks land on the wrong
 # window (gamepad still works). Game Mode keeps it for the Quick Access menu,
 # Performance panel and overlay.
+#
+# Nested, Steam also needs the SteamOS client flags: with only -gamepadui the
+# Big Picture UI goes black after the startup animation (CEF reports 0x0
+# browser dimensions). Combined with -e those flags stop Steam from starting,
+# so they are nested-only.
+#
+# Touch does not work nested: gamescope's Wayland backend ignores wl_touch.
 NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -r 144)
 NIRIGO_GAMESCOPE_NESTED_ARGS=(-f)
 NIRIGO_GAMESCOPE_SESSION_ARGS=(-e --adaptive-sync)
 NIRIGO_STEAM_ARGS=(-gamepadui)
+NIRIGO_STEAM_NESTED_ARGS=(-steamos3 -steampal -steamdeck)
+NIRIGO_STEAM_SESSION_ARGS=()
 NIRIGO_STEAM_SHUTDOWN_TIMEOUT=20
 
 conf="${XDG_CONFIG_HOME:-$HOME/.config}/nirigo/gamescope.conf"
@@ -86,10 +95,13 @@ if steam_running; then
 fi
 
 args=("${NIRIGO_GAMESCOPE_ARGS[@]}")
+steam_args=("${NIRIGO_STEAM_ARGS[@]}")
 if [[ $mode == session ]]; then
     args+=("${NIRIGO_GAMESCOPE_SESSION_ARGS[@]}")
+    steam_args+=("${NIRIGO_STEAM_SESSION_ARGS[@]}")
 else
     args+=("${NIRIGO_GAMESCOPE_NESTED_ARGS[@]}")
+    steam_args+=("${NIRIGO_STEAM_NESTED_ARGS[@]}")
 fi
 
-exec gamescope "${args[@]}" -- flatpak run "$scope" "$APP" "${NIRIGO_STEAM_ARGS[@]}"
+exec gamescope "${args[@]}" -- flatpak run "$scope" "$APP" "${steam_args[@]}"

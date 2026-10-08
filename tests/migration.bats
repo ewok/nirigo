@@ -103,7 +103,7 @@ SH
     gamescope_stubs
     run bash "$repo/files/system/usr/libexec/nirigo-gamescope-steam"
     [ "$status" -eq 0 ]
-    [ "$(cat "$GS_CALLS")" = "-W 2560 -H 1600 -r 144 -f -- flatpak run --system com.valvesoftware.Steam -gamepadui" ]
+    [ "$(cat "$GS_CALLS")" = "-W 2560 -H 1600 -r 144 -f -- flatpak run --system com.valvesoftware.Steam -gamepadui -steamos3 -steampal -steamdeck" ]
 }
 
 @test "gamescope wrapper prefers user Steam and uses session flags" {
@@ -168,10 +168,11 @@ SH
 NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -w 1920 -h 1200 -F fsr -r 144 -e)
 NIRIGO_GAMESCOPE_NESTED_ARGS=()
 NIRIGO_STEAM_ARGS=(-gamepadui -silent)
+NIRIGO_STEAM_NESTED_ARGS=(-steamos3)
 CONF
     run bash "$repo/files/system/usr/libexec/nirigo-gamescope-steam"
     [ "$status" -eq 0 ]
-    [ "$(cat "$GS_CALLS")" = "-W 2560 -H 1600 -w 1920 -h 1200 -F fsr -r 144 -e -- flatpak run --system com.valvesoftware.Steam -gamepadui -silent" ]
+    [ "$(cat "$GS_CALLS")" = "-W 2560 -H 1600 -w 1920 -h 1200 -F fsr -r 144 -e -- flatpak run --system com.valvesoftware.Steam -gamepadui -silent -steamos3" ]
 }
 
 @test "gamescope entry points are executable and wired together" {
