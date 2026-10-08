@@ -185,3 +185,11 @@ CONF
     grep -q 'install-gamescope.sh' "$repo/recipes/recipe.yml"
     grep -q 'com.valvesoftware.Steam' "$repo/recipes/recipe.yml"
 }
+
+@test "hid-lenovo-go stays off the Legion Go controller so HHD touchpad works" {
+    local conf="$repo/files/system/usr/lib/modprobe.d/nirigo-hid-lenovo-go.conf"
+    grep -qx 'blacklist hid_lenovo_go' "$conf"
+    grep -qx 'install hid_lenovo_go /bin/false' "$conf"
+    # The initramfs is built before the files module, so dracut must omit it too.
+    grep -q -- '--omit-drivers "hid-lenovo-go"' "$repo/files/scripts/installkernel.sh"
+}

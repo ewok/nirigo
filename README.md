@@ -498,6 +498,18 @@ repeatedly next to Steam in gamescope. To re-enable it, remove `overlay` from
 the blacklist and restart HHD. On installs where HHD already created that file,
 `/etc` keeps the local copy; add `overlay` to its blacklist by hand.
 
+The ogc kernel's `hid-lenovo-go` driver is disabled (in
+`/usr/lib/modprobe.d/nirigo-hid-lenovo-go.conf`, and omitted from the
+initramfs). It takes the controller over from `hid-generic`/`hid-multitouch`,
+and its touchpad reports only touch and position: no `BTN_MOUSE`, no click, no
+two-finger tap. HHD 4.1.12 then fails with
+`Device with the following not found: … Touchpad` every few seconds, and the
+emulated controller never starts. HHD already handles RGB, gyro and the
+controller settings, so disabling the driver gives up nothing HHD needs.
+Before re-enabling it, check that a newer HHD supports the driver. Then remove
+the modprobe file and the `--omit-drivers` flag in
+`files/scripts/installkernel.sh`.
+
 In **Settings → Plugins**, scan for plugins and enable **Legion Go TDP**. Add
 it to your DankBar layout and Control Center widgets, then run `dms restart`
 if it does not appear. The link points to `/usr/share/nirigo/dms-plugins/LegionGoTdp`,

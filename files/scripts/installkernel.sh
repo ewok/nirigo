@@ -51,8 +51,14 @@ dnf -y install \
 
 # The install.d hooks are neutered inside a container build, so build the
 # initramfs for the new kernel explicitly.
+#
+# hid-lenovo-go is omitted: it would bind the Legion Go controller before the
+# real root (and its modprobe.d blacklist) is mounted. Its touchpad lacks
+# BTN_MOUSE, so HHD's Legion Go emulation never starts. See
+# files/system/usr/lib/modprobe.d/nirigo-hid-lenovo-go.conf.
 NEW_KERNEL="$(rpm -q --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}\n' kernel-core)"
 echo "Regenerating initramfs for $NEW_KERNEL"
 /usr/bin/dracut --no-hostonly --kver "$NEW_KERNEL" --reproducible -v --add ostree \
+    --omit-drivers "hid-lenovo-go" \
     -f "/lib/modules/$NEW_KERNEL/initramfs.img"
 chmod 0600 "/lib/modules/$NEW_KERNEL/initramfs.img"
