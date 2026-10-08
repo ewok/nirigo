@@ -493,6 +493,11 @@ owning service and rerun the helper. Repair interrupts HHD controller emulation
 briefly. Verify touchpad movement on the device after repair; a successful TDP
 read alone does not verify touchpad functionality.
 
+HHD's overlay plugin is disabled in `/etc/hhd/plugins.yml`, because it crashed
+repeatedly next to Steam in gamescope. To re-enable it, remove `overlay` from
+the blacklist and restart HHD. On installs where HHD already created that file,
+`/etc` keeps the local copy; add `overlay` to its blacklist by hand.
+
 In **Settings → Plugins**, scan for plugins and enable **Legion Go TDP**. Add
 it to your DankBar layout and Control Center widgets, then run `dms restart`
 if it does not appear. The link points to `/usr/share/nirigo/dms-plugins/LegionGoTdp`,
@@ -618,7 +623,9 @@ ujust gamescope-config   # creates ~/.config/nirigo/gamescope.conf
 Limitations:
 
 - If Steam is already running, the wrapper shuts it down first. Otherwise
-  Steam would open outside gamescope.
+  Steam would open outside gamescope. Stale `flatpak ps` entries whose PID is
+  gone are ignored, since asking a non-running Steam to shut down would close
+  the new Steam inside gamescope.
 - The desktop launcher runs gamescope without Steam integration (`-e`),
   because nested in niri it sends mouse and keyboard clicks to the wrong
   window. As a result, Steam's Quick Access/Performance controls (FPS limit,

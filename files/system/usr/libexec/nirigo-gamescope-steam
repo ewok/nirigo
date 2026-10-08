@@ -46,8 +46,18 @@ fail() {
     exit 1
 }
 
+# Flatpak can retain stale rows in `flatpak ps`; only a live PID is a running
+# app. Treating a stale row as running makes `-shutdown` start a fresh Steam
+# client that later closes the Steam launched inside gamescope.
 steam_running() {
-    flatpak ps --columns=application 2>/dev/null | grep -qx "$APP"
+    local app pid
+    while read -r app pid; do
+        [[ $app == "$APP" && $pid =~ ^[0-9]+$ ]] || continue
+        if kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    done < <(flatpak ps --columns=application,pid 2>/dev/null)
+    return 1
 }
 
 command -v gamescope >/dev/null 2>&1 || fail "gamescope is not installed."

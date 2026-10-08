@@ -65,6 +65,8 @@ SH
 
 gamescope_stubs() {
     export FP_USER=0 FP_SYSTEM=1 FP_STUCK=0
+    # PID reported for Steam by `flatpak ps`; the test shell is always alive.
+    export FP_PID=$$
     export FP_CALLS="$BATS_TEST_TMPDIR/flatpak.calls"
     export FP_RUNNING="$BATS_TEST_TMPDIR/steam.running"
     export GS_CALLS="$BATS_TEST_TMPDIR/gamescope.calls"
@@ -78,6 +80,10 @@ case "$1 $2" in
     'ps --columns=application')
         [[ -e $FP_RUNNING ]] && echo com.valvesoftware.Steam
         echo org.example.Other
+        ;;
+    'ps --columns=application,pid')
+        [[ -e $FP_RUNNING ]] && echo "com.valvesoftware.Steam $FP_PID"
+        echo "org.example.Other $$"
         ;;
     run\ *)
         if [[ ${*: -1} == -shutdown && $FP_STUCK != 1 ]]; then rm -f "$FP_RUNNING"; fi
@@ -127,6 +133,20 @@ SH
     [ "$status" -eq 0 ]
     grep -qx 'run --system com.valvesoftware.Steam -shutdown' "$FP_CALLS"
     [ -s "$GS_CALLS" ]
+}
+
+@test "gamescope wrapper ignores stale Steam rows with dead PIDs" {
+    gamescope_stubs
+    touch "$FP_RUNNING"
+    true &
+    FP_PID=$!
+    wait "$FP_PID"
+    export FP_PID
+    run bash "$repo/files/system/usr/libexec/nirigo-gamescope-steam"
+    [ "$status" -eq 0 ]
+    [ -s "$GS_CALLS" ]
+    run grep -c -- '-shutdown' "$FP_CALLS"
+    [ "$output" = 0 ]
 }
 
 @test "gamescope wrapper gives up when Steam does not exit" {

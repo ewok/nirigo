@@ -1,0 +1,11 @@
+# Plugin blacklist
+# The plugin providers under blacklist will not run.
+#
+# nirigo: HHD's overlay crashed repeatedly next to Steam in gamescope, so it is
+# disabled. Remove `overlay` below to re-enable it.
+#
+# Warning: this file is read only on startup. Restart HHD after editing:
+# `sudo systemctl restart hhd.service` (or `hhd@$(whoami)` on older packages).
+
+blacklist:
+- overlay
