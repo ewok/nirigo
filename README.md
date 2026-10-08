@@ -497,6 +497,13 @@ HHD's overlay plugin is disabled in `/etc/hhd/plugins.yml`, because it crashed
 repeatedly next to Steam in gamescope. To re-enable it, remove `overlay` from
 the blacklist and restart HHD. On installs where HHD already created that file,
 `/etc` keeps the local copy; add `overlay` to its blacklist by hand.
+HHD 4.1.12 ignores the blacklist (it logs "Skipping blacklisted provider" but
+loads the plugin anyway), so `files/scripts/patch-hhd-blacklist.sh` adds the
+missing `continue` at build time. If HHD's code changes upstream, the build
+fails, so the patch gets reviewed again. With the overlay off, Legion+Y
+(`hhd_qam`) opens Steam's Quick Access menu, not HHD's. A crashed overlay
+used to keep the gamepad grabbed, so Steam lost gamepad input while the
+touchpad still worked.
 
 The ogc kernel's `hid-lenovo-go` driver is disabled (in
 `/usr/lib/modprobe.d/nirigo-hid-lenovo-go.conf`, and omitted from the

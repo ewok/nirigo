@@ -98,6 +98,11 @@ modules:
         - acl
         - libnotify
 
+  # Make HHD honour /etc/hhd/plugins.yml (keeps the crashing overlay off).
+  - type: script
+    scripts:
+      - patch-hhd-blacklist.sh
+
   # Bazzite's patched gamescope. Its COPR replaces many core packages, so the
   # script enables it for this single install and removes it afterwards.
   - type: script

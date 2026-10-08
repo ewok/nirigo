@@ -193,3 +193,31 @@ CONF
     # The initramfs is built before the files module, so dracut must omit it too.
     grep -q -- '--omit-drivers "hid-lenovo-go"' "$repo/files/scripts/installkernel.sh"
 }
+
+@test "HHD blacklist patch adds the missing continue and is idempotent" {
+    local f="$BATS_TEST_TMPDIR/__main__.py"
+    cat >"$f" <<'PY'
+        for autodetect in entry_points(group="hhd.plugins"):
+            name = autodetect.name
+            detector_names.append(name)
+            if name in blacklist:
+                logger.info(f"Skipping blacklisted provider '{name}'.")
+            if whitelist and name not in whitelist:
+                continue
+PY
+    run bash "$repo/files/scripts/patch-hhd-blacklist.sh" "$f"
+    [ "$status" -eq 0 ]
+    grep -A1 "Skipping blacklisted provider" "$f" | grep -qx '                continue'
+    run bash "$repo/files/scripts/patch-hhd-blacklist.sh" "$f"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"nothing to do"* ]]
+    [ "$(grep -c '^                continue$' "$f")" -eq 2 ]
+}
+
+@test "HHD blacklist patch stops the build when upstream code changed" {
+    local f="$BATS_TEST_TMPDIR/__main__.py"
+    printf 'something else\n' >"$f"
+    run bash "$repo/files/scripts/patch-hhd-blacklist.sh" "$f"
+    [ "$status" -ne 0 ]
+    grep -q 'patch-hhd-blacklist.sh' "$repo/recipes/recipe.yml"
+}
