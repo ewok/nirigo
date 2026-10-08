@@ -619,6 +619,11 @@ Limitations:
 
 - If Steam is already running, the wrapper shuts it down first. Otherwise
   Steam would open outside gamescope.
+- The desktop launcher runs gamescope without Steam integration (`-e`),
+  because nested in niri it sends mouse and keyboard clicks to the wrong
+  window. As a result, Steam's Quick Access/Performance controls (FPS limit,
+  FSR, refresh rate) and the overlay over games may not work there. Use Game
+  Mode, which keeps `-e`, for those.
 - Steam's "Switch to Desktop" does nothing in Game Mode, because Flatpak Steam
   cannot run `steamos-session-select` on the host.
 - If the Game Mode picture is rotated, add `--force-orientation left` (or

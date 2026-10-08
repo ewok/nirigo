@@ -21,10 +21,14 @@ case "${1:-}" in
         ;;
 esac
 
-# Defaults: native Legion Go panel (2560x1600 @ 144 Hz) with Steam integration.
-NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -r 144 -e)
+# Defaults: native Legion Go panel (2560x1600 @ 144 Hz).
+# Steam integration (-e) is only enabled in Game Mode: when nested in niri it
+# lets Steam drive window focus and mouse/keyboard clicks land on the wrong
+# window (gamepad still works). Game Mode keeps it for the Quick Access menu,
+# Performance panel and overlay.
+NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -r 144)
 NIRIGO_GAMESCOPE_NESTED_ARGS=(-f)
-NIRIGO_GAMESCOPE_SESSION_ARGS=(--adaptive-sync)
+NIRIGO_GAMESCOPE_SESSION_ARGS=(-e --adaptive-sync)
 NIRIGO_STEAM_ARGS=(-gamepadui)
 NIRIGO_STEAM_SHUTDOWN_TIMEOUT=20
 

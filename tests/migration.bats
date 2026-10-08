@@ -97,7 +97,7 @@ SH
     gamescope_stubs
     run bash "$repo/files/system/usr/libexec/nirigo-gamescope-steam"
     [ "$status" -eq 0 ]
-    [ "$(cat "$GS_CALLS")" = "-W 2560 -H 1600 -r 144 -e -f -- flatpak run --system com.valvesoftware.Steam -gamepadui" ]
+    [ "$(cat "$GS_CALLS")" = "-W 2560 -H 1600 -r 144 -f -- flatpak run --system com.valvesoftware.Steam -gamepadui" ]
 }
 
 @test "gamescope wrapper prefers user Steam and uses session flags" {

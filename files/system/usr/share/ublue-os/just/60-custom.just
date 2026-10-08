@@ -321,18 +321,21 @@ gamescope-config:
   # Uncomment and edit; unset arrays keep the image defaults.
 
   # Used in both the desktop launcher and the Game Mode session.
-  # Default: native Legion Go panel with Steam integration.
-  #NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -r 144 -e)
+  # Default: native Legion Go panel.
+  #NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -r 144)
 
   # Example: render at 1920x1200 and upscale to the panel with FSR.
-  #NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -w 1920 -h 1200 -F fsr -r 144 -e)
+  #NIRIGO_GAMESCOPE_ARGS=(-W 2560 -H 1600 -w 1920 -h 1200 -F fsr -r 144)
 
   # Extra flags for the "Steam (Gamescope)" launcher inside niri.
+  # Do not add -e (Steam integration) here: nested, it breaks mouse and
+  # keyboard input in Steam.
   #NIRIGO_GAMESCOPE_NESTED_ARGS=(-f)
 
-  # Extra flags for the "Steam (Game Mode)" session. If the picture is rotated,
-  # add --force-orientation left (or right).
-  #NIRIGO_GAMESCOPE_SESSION_ARGS=(--adaptive-sync)
+  # Extra flags for the "Steam (Game Mode)" session. -e enables Steam
+  # integration (Quick Access menu, Performance panel, overlay). If the picture
+  # is rotated, add --force-orientation left (or right).
+  #NIRIGO_GAMESCOPE_SESSION_ARGS=(-e --adaptive-sync)
 
   # Arguments passed to Steam.
   #NIRIGO_STEAM_ARGS=(-gamepadui)
