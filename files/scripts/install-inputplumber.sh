@@ -24,6 +24,11 @@ command -v "$DNF" >/dev/null 2>&1 || DNF=dnf
     opengamepadui \
     steamos-manager-powerstation
 
+# gamescope-session-plus treats cardwire as a synchronous client launcher, but
+# cardwire daemonizes here and causes Game Mode to tear gamescope down at once.
+# The direct OpenGamepadUI launch path is the native upstream fallback.
+"$DNF" -y remove cardwire
+
 # The provider package pulls in the manager daemon. Both daemons are required:
 # root owns firmware attributes and the user daemon exports the session API.
 test -f /usr/lib/systemd/system/steamos-manager.service

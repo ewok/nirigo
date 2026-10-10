@@ -22,7 +22,7 @@ setup() {
     [ -x "$repo/files/scripts/install-inputplumber.sh" ]
     [ -x "$repo/files/system/usr/libexec/os-session-select" ]
     [ -x "$repo/files/system/usr/libexec/nirigo-steam-migrate" ]
-    grep -qx 'Exec=gamescope-session-plus ogui-steam' "$repo/files/system/usr/share/wayland-sessions/steam-gamescope.desktop"
+    [ ! -e "$repo/files/system/usr/share/wayland-sessions/steam-gamescope.desktop" ]
     grep -qx 'Exec=steam -gamepadui' "$repo/files/system/usr/share/applications/steam-gamescope.desktop"
     grep -q 'match app-id="steam" title="^Steam Big Picture Mode\$"' "$repo/files/system/usr/etc/niri/config.d/20-window-rules.kdl"
     grep -q 'install-gamescope.sh' "$repo/recipes/recipe.yml"
@@ -30,6 +30,7 @@ setup() {
     grep -q 'install-inputplumber.sh' "$repo/recipes/recipe.yml"
     grep -q 'inputplumber.service' "$repo/recipes/recipe.yml"
     grep -q 'gamescope-session-ogui-steam' "$repo/files/scripts/install-inputplumber.sh"
+    grep -qx '"$DNF" -y remove cardwire' "$repo/files/scripts/install-inputplumber.sh"
     grep -q 'steamos-manager-powerstation' "$repo/files/scripts/install-inputplumber.sh"
     ! grep -q 'com.valvesoftware.Steam' "$repo/recipes/recipe.yml"
     grep -qx 'systemctl --user exit' "$repo/files/system/usr/libexec/os-session-select"
