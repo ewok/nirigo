@@ -60,6 +60,7 @@ if [[ $2 == get-property ]]; then
         TdpLimit) printf 'u %s\n' "$(<"$TDP_STATE")" ;;
         TdpLimitMin) printf 'u 5\n' ;;
         TdpLimitMax) printf 'u 30\n' ;;
+        PerformanceProfile) printf 's "custom"\n' ;;
     esac
 elif [[ $2 == set-property ]]; then
     printf '%s\n' "${*: -1}" >"$TDP_STATE"
@@ -69,6 +70,9 @@ SH
     run bash "$repo/files/system/usr/libexec/nirigo-tdp"
     [ "$status" -eq 0 ]
     [ "$output" = 15 ]
+    run bash "$repo/files/system/usr/libexec/nirigo-tdp" profile
+    [ "$status" -eq 0 ]
+    [ "$output" = custom ]
     run bash "$repo/files/system/usr/libexec/nirigo-tdp" set 30
     [ "$status" -eq 0 ]
     [ "$output" = 30 ]
@@ -94,5 +98,7 @@ SH
     grep -q 'Mod+Ctrl+T' "$repo/files/system/usr/etc/niri/config.d/40-dms.kdl"
     grep -q 'dms-tdp-setup:' "$repo/files/system/usr/share/ublue-os/just/60-custom.just"
     [ -f "$repo/files/system/usr/share/nirigo/dms-plugins/LegionGoTdp/plugin.json" ]
-    grep -q 'onExited' "$repo/files/system/usr/share/nirigo/dms-plugins/LegionGoTdp/LegionGoTdpWidget.qml"
+    [ -f "$repo/files/system/usr/share/nirigo/dms-plugins/LegionGoTdp/qmldir" ]
+    grep -q 'TdpService' "$repo/files/system/usr/share/nirigo/dms-plugins/LegionGoTdp/LegionGoTdp.qml"
+    grep -q 'nirigo-tdp' "$repo/files/system/usr/share/nirigo/dms-plugins/LegionGoTdp/TdpService.qml"
 }

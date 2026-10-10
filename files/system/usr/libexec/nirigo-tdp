@@ -24,8 +24,8 @@ property() {
 profile() {
     local type value extra
     read -r type value extra < <(busctl --user get-property "$service" "$path" "$profile_interface" PerformanceProfile)
-    [[ $type == s && $value =~ ^"(low-power|balanced|performance|custom)"$ && -z $extra ]] || return 1
-    printf '%s\n' "${value#\"}" | tr -d '"'
+    [[ $type == s && $value =~ ^\"(low-power|balanced|performance|custom)\"$ && -z $extra ]] || return 1
+    printf '%s\n' "${value:1:-1}"
 }
 
 set_profile() {
