@@ -6,22 +6,56 @@ set -Eeuo pipefail
 
 service=com.steampowered.SteamOSManager1
 path=/com/steampowered/SteamOSManager1
-interface=com.steampowered.SteamOSManager1.TdpLimit1
+tdp_interface=com.steampowered.SteamOSManager1.TdpLimit1
+profile_interface=com.steampowered.SteamOSManager1.PerformanceProfile1
 
 usage() {
-    printf 'Usage: %s [rotate|set WATTS|range]\n' "${0##*/}" >&2
+    printf 'Usage: %s [profile [NAME]|rotate|set WATTS|range]\n' "${0##*/}" >&2
     exit 2
 }
 
 property() {
     local type value extra
-    read -r type value extra < <(busctl --user get-property "$service" "$path" "$interface" "$1")
+    read -r type value extra < <(busctl --user get-property "$service" "$path" "$tdp_interface" "$1")
     [[ $type == u && $value =~ ^[0-9]+$ && -z $extra ]] || return 1
     printf '%s\n' "$value"
 }
 
+profile() {
+    local type value extra
+    read -r type value extra < <(busctl --user get-property "$service" "$path" "$profile_interface" PerformanceProfile)
+    [[ $type == s && $value =~ ^"(low-power|balanced|performance|custom)"$ && -z $extra ]] || return 1
+    printf '%s\n' "${value#\"}" | tr -d '"'
+}
+
+set_profile() {
+    [[ $1 =~ ^(low-power|balanced|performance|custom)$ ]] || {
+        printf 'Unknown SteamOS Manager performance profile: %s\n' "$1" >&2
+        exit 2
+    }
+    busctl --user set-property "$service" "$path" "$profile_interface" PerformanceProfile s "$1"
+    profile
+}
+
+if [[ ${1:-} == profile ]]; then
+    if [[ $# == 1 ]]; then
+        profile
+    elif [[ $# == 2 ]]; then
+        set_profile "$2"
+    else
+        usage
+    fi
+    exit
+fi
+
+# The Legion Go enables TdpLimit1 only while its custom performance profile is
+# active. The shortcut selects it before applying a manual watt limit.
+if [[ ${1:-} == rotate ]]; then
+    set_profile custom >/dev/null
+fi
+
 current=$(property TdpLimit) || {
-    printf 'SteamOS Manager TDP is unavailable. Verify steamos-manager.service and the Legion Go firmware attributes.\n' >&2
+    printf 'SteamOS Manager TDP is unavailable. Select the custom performance profile and verify steamos-manager.service.\n' >&2
     exit 1
 }
 
