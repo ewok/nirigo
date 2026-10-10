@@ -10,6 +10,7 @@ PluginComponent {
     property string watts: "--"
     property string profile: "--"
     property string lastError: ""
+    property bool refreshWatts: false
 
     function run(command, output) {
         if (!tdp.running) {
@@ -41,8 +42,7 @@ PluginComponent {
                 const value = data.trim()
                 if (tdp.output === "profile") {
                     root.profile = value
-                    if (value === "custom")
-                        root.run(["/usr/libexec/nirigo-tdp"], "tdp")
+                    root.refreshWatts = value === "custom"
                 } else if (/^[0-9]+$/.test(value)) {
                     root.watts = value
                     root.lastError = ""
@@ -69,6 +69,12 @@ PluginComponent {
                 text: root.profile === "custom" ? root.watts + " W" : root.profile
                 color: Theme.surfaceText
                 font.pixelSize: Theme.fontSizeSmall
+            }
+        }
+        onExited: () => {
+            if (root.refreshWatts) {
+                root.refreshWatts = false
+                root.run(["/usr/libexec/nirigo-tdp"], "tdp")
             }
         }
     }

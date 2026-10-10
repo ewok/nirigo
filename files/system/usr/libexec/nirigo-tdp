@@ -75,7 +75,7 @@ case "${1:-}" in
             printf 'TDP must be between %s and %s W.\n' "$min" "$max" >&2
             exit 1
         }
-        busctl --user set-property "$service" "$path" "$interface" TdpLimit u "$2"
+        busctl --user set-property "$service" "$path" "$tdp_interface" TdpLimit u "$2"
         property TdpLimit
         ;;
     rotate)
@@ -83,7 +83,7 @@ case "${1:-}" in
         min=$(property TdpLimitMin)
         max=$(property TdpLimitMax)
         ((current < max)) && next=$((current + 1)) || next=$min
-        busctl --user set-property "$service" "$path" "$interface" TdpLimit u "$next"
+        busctl --user set-property "$service" "$path" "$tdp_interface" TdpLimit u "$next"
         property TdpLimit
         ;;
     *) usage ;;
