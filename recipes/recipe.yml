@@ -21,25 +21,21 @@ modules:
   - type: script
     scripts:
       - installkernel.sh
-      - ublue-acpi_call.sh
+      - install-inputplumber.sh
       - allow-nix.sh
       # - patch-mt7xxx.sh
       # - xpad.sh
 
   - type: rpm-ostree
     repos:
-      - https://copr.fedorainfracloud.org/coprs/hhd-dev/hhd/repo/fedora-%OS_VERSION%/hhd-dev-hhd-fedora-%OS_VERSION%.repo
       - https://copr.fedorainfracloud.org/coprs/scottames/ghostty/repo/fedora-%OS_VERSION%/scottames-ghostty-fedora-%OS_VERSION%.repo
     install:
       - ghostty
-      - hhd
-      - hhd-ui
       - git-crypt
       - tailscale
       - wdisplays
       - ydotool
       - acpica-tools
-      - input-remapper
       - ca-certificates
       # Secret portal / keyring backend. niri only Recommends it and wayblue
       # builds with weak deps disabled, so pull it in explicitly. See
@@ -64,10 +60,7 @@ modules:
       - fuse-sshfs
       - rclone
       - gocryptfs
-      # FUSE v2. Fedora Atomic drops fuse/fuse-libs on purpose
-      # (https://fedoraproject.org/wiki/Changes/AtomicDesktopDropFuse2) but
-      # AppImages need the mount helper and libfuse.so.2. The library is
-      # explicitly installed through DNF below, even if already in the base.
+      # FUSE v2 remains useful for AppImages on Fedora Atomic.
       - fuse
 
   # DNF tolerates dependencies already provided by the base image.
@@ -79,8 +72,7 @@ modules:
     install:
       install-weak-deps: false
       packages:
-        # Older hhd-ui AppImage runtimes dynamically load libfuse.so.2.
-        # Require it explicitly rather than relying on transitive dependencies.
+        # AppImages can dynamically load libfuse.so.2.
         - fuse-libs
         - quickshell
         - dms
@@ -97,11 +89,6 @@ modules:
         - qt6ct-kde
         - acl
         - libnotify
-
-  # Make HHD honour /etc/hhd/plugins.yml (keeps the crashing overlay off).
-  - type: script
-    scripts:
-      - patch-hhd-blacklist.sh
 
   # Bazzite's patched gamescope. Its COPR replaces many core packages, so the
   # script enables it for this single install and removes it afterwards.
@@ -144,7 +131,8 @@ modules:
   - type: systemd
     system:
       enabled:
-        - input-remapper.service
+        - inputplumber.service
+        - nirigo-inputplumber-migrate.service
 
   # Install the pinned plugin first; image files overlay its focus fixes.
   - type: script

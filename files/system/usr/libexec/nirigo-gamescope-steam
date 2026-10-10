@@ -95,6 +95,14 @@ if [[ $mode == direct ]]; then
     exec flatpak run "$scope" "$APP" "${NIRIGO_STEAM_DIRECT_ARGS[@]}"
 fi
 
+# Keep Steam shutdown and gamescope startup as one transaction. A second
+# launcher would otherwise race the first and can place Steam outside gamescope.
+command -v flock >/dev/null 2>&1 || fail "flock is not installed."
+command -v setsid >/dev/null 2>&1 || fail "setsid is not installed."
+lock_file="${XDG_RUNTIME_DIR:-/tmp}/nirigo-steam-${UID}.lock"
+exec {lock_fd}>"$lock_file"
+flock -n "$lock_fd" || fail "Steam (Gamescope) is already starting or running."
+
 # A running Steam would receive the launch request and open its window outside
 # gamescope, so stop it first.
 if steam_running; then
@@ -119,4 +127,29 @@ else
     steam_args+=("${NIRIGO_STEAM_NESTED_ARGS[@]}")
 fi
 
-exec gamescope "${args[@]}" -- flatpak run "$scope" "$APP" "${steam_args[@]}"
+# Give gamescope and the Flatpak it starts their own process group. This lets
+# Game Mode termination reap only this launch, never an independently restarted
+# desktop Steam instance.
+gamescope_pid=
+terminate_gamescope() {
+    if [[ -n $gamescope_pid ]] && kill -0 "$gamescope_pid" 2>/dev/null; then
+        kill -- "-$gamescope_pid" 2>/dev/null || true
+        wait "$gamescope_pid" 2>/dev/null || true
+    fi
+}
+trap terminate_gamescope EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+setsid gamescope "${args[@]}" -- flatpak run "$scope" "$APP" "${steam_args[@]}" &
+gamescope_pid=$!
+wait "$gamescope_pid"
+gamescope_status=$?
+gamescope_pid=
+trap - EXIT HUP INT TERM
+
+if ((gamescope_status != 0)); then
+    echo "${0##*/}: gamescope exited with status $gamescope_status." >&2
+fi
+exit "$gamescope_status"

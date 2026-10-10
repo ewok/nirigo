@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+# HHD service enablement lives in persistent /etc, so deployments built before
+# the InputPlumber migration can leave dangling unit symlinks behind.
+set -Eeuo pipefail
+
+rm -f /etc/systemd/system/*.wants/hhd.service \
+    /etc/systemd/system/*.wants/hhd@*.service
+systemctl daemon-reload
+install -d -m 0755 /var/lib/nirigo
+touch /var/lib/nirigo/inputplumber-migrated

@@ -1,0 +1,12 @@
+[Unit]
+Description=Remove legacy HHD service enablement
+ConditionPathExists=!/var/lib/nirigo/inputplumber-migrated
+After=local-fs.target
+Before=inputplumber.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nirigo-inputplumber-migrate
+
+[Install]
+WantedBy=multi-user.target

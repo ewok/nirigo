@@ -2,10 +2,8 @@
 
 Fedora Atomic image based on [Wayblue](https://github.com/wayblueorg/wayblue),
 with niri, Quickshell and DankMaterialShell (DMS). Login uses greetd with
-DankGreeter. The handheld kernel, HHD and Legion Go input configuration are
-included.
-
-Added HHD with managing TDP via acpi_call.
+DankGreeter. The handheld kernel and InputPlumber Legion Go input configuration
+are included.
 
 > **Note**
 > This image used to be `swaygo` (built on `ghcr.io/wayblueorg/sway`). It now
@@ -81,7 +79,6 @@ If the display-manager alias still points to SDDM after an upgrade, run
 | Mod+V / Mod+M / Mod+Comma | Clipboard / processes / settings |
 | Mod+N / Mod+Y | Notifications / wallpapers |
 | Super+Alt+L | Lock |
-| Mod+Ctrl+T | Rotate HHD TDP mode and notify |
 | Mod+Ctrl+V | Toggle floating (moved from Mod+V) |
 | Mod+Ctrl+M | Maximize to edges (moved from Mod+M) |
 | Mod+Ctrl+Comma | Consume window into column (moved from Mod+Comma) |
@@ -94,7 +91,7 @@ this Atomic image. Password login preserves keyring auto-unlock.
 
 Check `systemctl status greetd`, `getent passwd greeter`,
 `systemctl --user status dms`, and `niri validate`. Test touchscreen login,
-notifications, polkit prompts, an X11 app, TDP rotation, lock/unlock and
+notifications, polkit prompts, an X11 app, controller input, lock/unlock and
 lock-before-suspend on the device. Test browser screen sharing and keyring
 auto-unlock. For greeter failures inspect `journalctl -b -u greetd` and
 `sudo ausearch -m avc -ts recent` for SELinux denials.
@@ -460,111 +457,33 @@ within three seconds of running this (it types `a`):
 sleep 3; YDOTOOL_SOCKET=/run/ydotoold/socket ydotool key 30:1 30:0
 ```
 
-## Legion Go TDP widget
+## Legion Go Input
 
-The bundled **Legion Go TDP** plugin (DMS 1.6+) provides both a DankBar widget
-and a Control Center tile. Initialize HHD and install the per-user link with
-one command, run as your desktop user (without `sudo`):
+InputPlumber owns the Legion Go controller, touchpad, mouse, keyboard and IMU
+devices. Its packaged upstream `Lenovo Legion Go` profile creates virtual Xbox
+Elite, mouse, keyboard and touchpad devices. It starts as `inputplumber.service`.
 
-```bash
-ujust dms-tdp-setup
-```
+The image does not include HHD. TDP profiles, RGB controls, HHD's overlay and
+the old Legion Go TDP DMS widget are intentionally unavailable. The native
+`hid-lenovo-go` driver is enabled again; the InputPlumber profile consumes the
+Legion Go HIDRAW devices directly.
 
-The helper calls `ujust hhd-setup`, which requests sudo to enable and start
-the packaged `hhd.service` at boot (falling back to `hhd@<your-username>.service`
-on older packages), then retries the TDP read for up to about 45 seconds.
-It checks service health and competing daemon processes before reporting the
-current profile. Failures print diagnostic commands. Both commands can be rerun;
-`ujust hhd-setup` also works on its own when you only need the daemon.
+After upgrading from an HHD image, the one-shot migration removes stale HHD
+unit enablement from persistent `/etc`. Remove any old dangling
+`~/.config/DankMaterialShell/plugins/LegionGoTdp` symlink, then log out and in.
 
-If setup reports conflicting services, or a service's journal stops at
-`Trying to acquire hhd lock...`, run as your desktop user:
+Check the service and profile with:
 
 ```bash
-ujust hhd-fix
+systemctl status inputplumber.service
+journalctl -b -u inputplumber.service --no-pager
+test -r /usr/share/inputplumber/devices/50-legion_go.yaml
 ```
 
-This stops and disables active/enabled `hhd.service` and `hhd@…` system-service
-instances, then starts the selected packaged service and verifies readiness.
-Settings and profiles are preserved. Repeated repair runs are supported.
-If another daemon remains (for example, a manually launched process or a user
-service), repair stops and prints its PID and command; stop that daemon or its
-owning service and rerun the helper. Repair interrupts HHD controller emulation
-briefly. Verify touchpad movement on the device after repair; a successful TDP
-read alone does not verify touchpad functionality.
-
-HHD's overlay plugin is disabled in `/etc/hhd/plugins.yml`, because it crashed
-repeatedly next to Steam in gamescope. To re-enable it, remove `overlay` from
-the blacklist and restart HHD. On installs where HHD already created that file,
-`/etc` keeps the local copy; add `overlay` to its blacklist by hand.
-HHD 4.1.12 ignores the blacklist (it logs "Skipping blacklisted provider" but
-loads the plugin anyway), so `files/scripts/patch-hhd-blacklist.sh` adds the
-missing `continue` at build time. If HHD's code changes upstream, the build
-fails, so the patch gets reviewed again. With the overlay off, Legion+Y
-(`hhd_qam`) opens Steam's Quick Access menu, not HHD's. A crashed overlay
-used to keep the gamepad grabbed, so Steam lost gamepad input while the
-touchpad still worked.
-
-The ogc kernel's `hid-lenovo-go` driver is disabled (in
-`/usr/lib/modprobe.d/nirigo-hid-lenovo-go.conf`, and omitted from the
-initramfs). It takes the controller over from `hid-generic`/`hid-multitouch`,
-and its touchpad reports only touch and position: no `BTN_MOUSE`, no click, no
-two-finger tap. HHD 4.1.12 then fails with
-`Device with the following not found: … Touchpad` every few seconds, and the
-emulated controller never starts. HHD already handles RGB, gyro and the
-controller settings, so disabling the driver gives up nothing HHD needs.
-Before re-enabling it, check that a newer HHD supports the driver. Then remove
-the modprobe file and the `--omit-drivers` flag in
-`files/scripts/installkernel.sh`.
-
-In **Settings → Plugins**, scan for plugins and enable **Legion Go TDP**. Add
-it to your DankBar layout and Control Center widgets, then run `dms restart`
-if it does not appear. The link points to `/usr/share/nirigo/dms-plugins/LegionGoTdp`,
-so plugin updates follow image updates. The helper respects `XDG_CONFIG_HOME`
-and refuses to overwrite an existing local plugin.
-
-Click or tap either surface to cycle **Quiet → Balanced → Performance → Custom
-→ Quiet**. The horizontal bar shows the profile name; vertical bars use
-**Q/B/P/C**. Right-click the bar widget to refresh immediately. Both surfaces
-share state and refresh every five seconds while a widget instance is loaded,
-including changes made with the existing keyboard shortcut or HHD.
-
-The plugin calls `sudo -n /usr/libexec/rotatetdp.sh [rotate]` using the image's
-existing sudoers rule. It displays profile names, not wattage. Failed reads
-show **Unavailable**; failed switches show a DMS error toast. To diagnose:
-
-```bash
-sudo -n /usr/libexec/rotatetdp.sh
-```
-
-For development, link `files/system/usr/share/nirigo/dms-plugins/LegionGoTdp`
-from your checkout into your DMS plugins directory instead, and restart DMS
-after changing the shared QML singleton. On-device smoke checks: add both
-surfaces, cycle all four profiles, change the profile through HHD, and verify
-the unavailable state and recovery when HHD is stopped and restarted.
-
-### HHD UI: `libfuse.so.2` missing
-
-The upstream `hhd-ui` RPM installs an AppImage as `/usr/bin/hhd-ui`. Older
-AppImage runtimes need the FUSE 2 library, `libfuse.so.2`, supplied by Fedora's
-`fuse-libs`. FUSE 3 does not provide this ABI. The image recipe explicitly installs
-both `fuse-libs` and `fuse` (the AppImage mount helper).
-This UI dependency is separate from the HHD daemon/API socket.
-
-Check the **booted host**, outside distrobox/toolbox:
-
-```bash
-rpm -q hhd-ui fuse fuse-libs
-rpm -q --whatprovides 'libfuse.so.2()(64bit)'
-rpm-ostree status
-```
-
-If the library is missing, update to a build containing the FUSE package and
-reboot (`rpm-ostree upgrade`, then `systemctl reboot`). For an older image
-without the library, `sudo rpm-ostree install fuse-libs` followed by a reboot
-provides it. If the package is already installed but the error persists, check
-`rpm -V fuse-libs` and `command -v hhd-ui` and capture the full launch error.
-Enabling HHD alone cannot fix a missing AppImage library.
+Test controller input, the touchpad including click and scroll, FPS mode,
+paddles, suspend/resume, Steam Quick Access and gyro in a game. Quick Access
+and gyro behavior depend on Steam's handling of the virtual device and must be
+verified on the device.
 
 ## Keyring
 
@@ -618,10 +537,10 @@ There are three ways to run Steam:
 1. **Steam (Big Picture)** launcher in the app menu: runs Steam Big Picture
    directly as a fullscreen niri window, without gamescope
    (`nirigo-gamescope-steam --direct`). niri window rules make the Big Picture
-   window and games (`steam_app_*`) fullscreen. Touch, gamepad, mouse and
-   keyboard all work, and the gamepad keeps working after Steam's Guide menus
-   (Quick Access, Legion+Y). There is no gamescope upscaling or Steam
-   Performance panel here; set TDP with the DMS Legion Go TDP widget.
+    window and games (`steam_app_*`) fullscreen. Touch, gamepad, mouse and
+    keyboard all work, and the gamepad keeps working after Steam's Guide menus
+    (Quick Access, Legion+Y). There is no gamescope upscaling or Steam
+    Performance panel here.
 2. **Steam (Game Mode)** session in the greeter: gamescope drives the display
    directly, similar to SteamOS/Bazzite Game Mode. Leave it with
    Power → Exit Steam, which returns to the greeter.
@@ -637,8 +556,8 @@ There are three ways to run Steam:
 
 The launcher used to run Steam inside a nested gamescope. There, after Steam
 opened a Guide menu, Big Picture stopped taking gamepad input while touch,
-mouse and keyboard still worked: HHD kept sending the buttons, but Steam
-treated its window as unfocused. Nested mode is still available as
+mouse and keyboard still worked because Steam treated its window as unfocused.
+Nested mode is still available as
 `/usr/libexec/nirigo-gamescope-steam` without arguments.
 
 The launcher and the session both use `/usr/libexec/nirigo-gamescope-steam`.
@@ -684,14 +603,15 @@ Local migration checks (requires Bats and ShellCheck):
 bats tests/migration.bats
 shellcheck files/scripts/check-niri-config-drift.sh files/scripts/remove-packages.sh \
   files/scripts/niri-dropins.sh files/scripts/install-gamescope.sh \
-  files/system/usr/libexec/rotatetdp.sh files/system/usr/libexec/nirigo-gamescope-steam \
-  files/system/usr/libexec/nirigo-gamescope-session tests/migration.bats
+  files/scripts/install-inputplumber.sh files/system/usr/libexec/nirigo-gamescope-steam \
+  files/system/usr/libexec/nirigo-gamescope-session \
+  files/system/usr/libexec/nirigo-inputplumber-migrate tests/migration.bats
 ```
 
-TDP plugin backend and TDP/keyboard setup-helper checks (requires Node.js):
+Keyboard setup-helper checks (requires Node.js):
 
 ```bash
-node --test tests/dms-tdp.test.cjs tests/dms-keyboard.test.cjs
+node --test tests/dms-keyboard.test.cjs
 ```
 
 These exercise backend and setup logic with process doubles; QML loading,
