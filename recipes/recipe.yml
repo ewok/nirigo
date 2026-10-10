@@ -128,12 +128,6 @@ modules:
           # Wrapped by gamescope via /usr/libexec/nirigo-gamescope-steam.
           - com.valvesoftware.Steam
 
-  - type: systemd
-    system:
-      enabled:
-        - inputplumber.service
-        - nirigo-inputplumber-migrate.service
-
   # Install the pinned plugin first; image files overlay its focus fixes.
   - type: script
     scripts:
@@ -150,6 +144,8 @@ modules:
       enabled:
         - greetd.service
         - ydotool.service
+        - inputplumber.service
+        - nirigo-inputplumber-migrate.service
       masked:
         - sddm.service
         - sddm-boot.service
