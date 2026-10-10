@@ -146,12 +146,15 @@ modules:
         - ydotool.service
         - inputplumber.service
         - nirigo-inputplumber-migrate.service
+        - nirigo-steamos-manager-migrate.service
+        - steamos-manager.service
       masked:
         - sddm.service
         - sddm-boot.service
     user:
       enabled:
         - dms.service
+        - steamos-manager.service
       masked:
         - nirigo-swayidle.service
 

@@ -1,0 +1,12 @@
+[Unit]
+Description=Enable SteamOS Manager for existing Nirigo deployments
+ConditionPathExists=!/var/lib/nirigo/steamos-manager-migrated
+After=local-fs.target
+Before=steamos-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nirigo-steamos-manager-migrate
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+{
+    "id": "legionGoTdp",
+    "name": "Legion Go TDP",
+    "description": "Controls the Legion Go TDP through SteamOS Manager",
+    "version": "1.0.0",
+    "license": "GPL-3.0-only",
+    "author": "nirigo",
+    "icon": "speed",
+    "type": "composite",
+    "capabilities": ["dankbar-widget"],
+    "components": {
+        "widget": "./LegionGoTdpWidget.qml"
+    },
+    "settings": "./LegionGoTdpSettings.qml",
+    "requires_dms": ">=1.5.0",
+    "compositors": ["any"],
+    "permissions": ["process"]
+}

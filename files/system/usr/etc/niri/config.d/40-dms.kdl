@@ -17,6 +17,7 @@ spawn-at-startup "wl-paste" "--watch" "cliphist" "store"
 
 binds {
     Mod+T hotkey-overlay-title="Terminal" { spawn "ghostty"; }
+    Mod+Ctrl+T hotkey-overlay-title="TDP" { spawn "/usr/libexec/nirigo-tdp" "rotate"; }
     Mod+D hotkey-overlay-title="Launcher" { spawn "dms" "ipc" "call" "spotlight" "toggle"; }
     Mod+Space hotkey-overlay-title="Launcher" { spawn "dms" "ipc" "call" "spotlight" "toggle"; }
     Mod+V hotkey-overlay-title="Clipboard" { spawn "dms" "ipc" "call" "clipboard" "toggle"; }

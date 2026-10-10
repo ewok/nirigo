@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+systemctl enable steamos-manager.service
+systemctl --global enable steamos-manager.service
+install -d -m 0755 /var/lib/nirigo
+touch /var/lib/nirigo/steamos-manager-migrated

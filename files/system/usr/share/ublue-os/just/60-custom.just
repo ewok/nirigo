@@ -125,7 +125,34 @@ dms-keyboard-setup:
   printf 'Log out and back in to apply group membership and the DMS socket environment.\n'
   printf 'In DMS Settings → Plugins, scan and enable Virtual Keyboard.\n'
   printf 'Add its widget to your DankBar layout for touchscreen access.\n'
-  printf 'Toggle it with: dms ipc call virtualKeyboard toggle\n'
+   printf 'Toggle it with: dms ipc call virtualKeyboard toggle\n'
+
+# Link the image-owned SteamOS Manager TDP widget into the user DMS plugins.
+dms-tdp-setup:
+  #!/usr/bin/env bash
+  set -Eeuo pipefail
+  if [[ $(id -u) == 0 ]]; then
+    printf 'Run ujust dms-tdp-setup as your desktop user, without sudo.\n' >&2
+    exit 1
+  fi
+  source=/usr/share/nirigo/dms-plugins/LegionGoTdp
+  config="${XDG_CONFIG_HOME:-$HOME/.config}/DankMaterialShell"
+  target="$config/plugins/legionGoTdp"
+  if [[ ! -f "$source/plugin.json" ]]; then
+    printf 'error: bundled Legion Go TDP widget is missing; update the image first.\n' >&2
+    exit 1
+  fi
+  mkdir -p -- "$config/plugins"
+  if [[ -e "$target" || -L "$target" ]]; then
+    if [[ ! -L "$target" || $(readlink -- "$target") != "$source" ]]; then
+      printf 'error: %s already exists; move it aside before running this command.\n' "$target" >&2
+      exit 1
+    fi
+  else
+    ln -sT -- "$source" "$target"
+  fi
+  ujust dms-qml-cache-reset
+  printf 'In DMS Settings -> Plugins, scan and enable Legion Go TDP, then add its widget to DankBar.\n'
 
 # Enroll a YubiKey (FIDO2) as a LUKS unlock method for the encrypted root.
 setup-luks-fido2-unlock pin="keep":

@@ -75,6 +75,7 @@ If the display-manager alias still points to SDDM after an upgrade, run
 | Shortcut | Action |
 | --- | --- |
 | Mod+T | Ghostty |
+| Mod+Ctrl+T | Advance Legion Go TDP by 1 W (wraps at the hardware maximum) |
 | Mod+D / Mod+Space | DMS launcher |
 | Mod+V / Mod+M / Mod+Comma | Clipboard / processes / settings |
 | Mod+N / Mod+Y | Notifications / wallpapers |
@@ -463,14 +464,29 @@ InputPlumber owns the Legion Go controller, touchpad, mouse, keyboard and IMU
 devices. Its packaged upstream `Lenovo Legion Go` profile creates virtual Xbox
 Elite, mouse, keyboard and touchpad devices. It starts as `inputplumber.service`.
 
-The image does not include HHD. TDP profiles, RGB controls, HHD's overlay and
-the old Legion Go TDP DMS widget are intentionally unavailable. The native
-`hid-lenovo-go` driver is enabled again; the InputPlumber profile consumes the
-Legion Go HIDRAW devices directly.
+The image does not include HHD. RGB controls and HHD's overlay are unavailable.
+TDP is instead provided by Bazzite's `steamos-manager-powerstation`: it detects
+the Legion Go (`83E1`) and safely writes its firmware power attributes through
+the SteamOS Manager service. The native `hid-lenovo-go` driver is enabled again;
+the InputPlumber profile consumes the Legion Go HIDRAW devices directly.
+
+After updating and logging in, run `ujust dms-tdp-setup` as your desktop user.
+In **Settings -> Plugins**, scan and enable **Legion Go TDP**, then add its pill
+to DankBar. It displays the current TDP in watts. Click it or press
+`Mod+Ctrl+T` to advance one watt, wrapping from the manager-advertised maximum
+to its minimum. The helper is also available as:
+
+```bash
+/usr/libexec/nirigo-tdp          # current limit in watts
+/usr/libexec/nirigo-tdp range    # manager-advertised minimum and maximum
+/usr/libexec/nirigo-tdp set 20   # set a valid watt limit
+```
+
+Flatpak Steam cannot reach the host session D-Bus service, so its Quick Access
+performance panel cannot control TDP. Use the DMS widget or shortcut instead.
 
 After upgrading from an HHD image, the one-shot migration removes stale HHD
-unit enablement from persistent `/etc`. Remove any old dangling
-`~/.config/DankMaterialShell/plugins/LegionGoTdp` symlink, then log out and in.
+unit enablement from persistent `/etc`.
 
 Check the service and profile with:
 
@@ -478,6 +494,9 @@ Check the service and profile with:
 systemctl status inputplumber.service
 journalctl -b -u inputplumber.service --no-pager
 test -r /usr/share/inputplumber/devices/50-legion_go.yaml
+systemctl status steamos-manager.service
+systemctl --user status steamos-manager.service
+/usr/libexec/nirigo-tdp range
 ```
 
 Test controller input, the touchpad including click and scroll, FPS mode,
@@ -604,7 +623,9 @@ shellcheck files/scripts/check-niri-config-drift.sh files/scripts/remove-package
   files/scripts/niri-dropins.sh files/scripts/install-gamescope.sh \
   files/scripts/install-inputplumber.sh files/system/usr/libexec/nirigo-gamescope-steam \
   files/system/usr/libexec/nirigo-gamescope-session \
-  files/system/usr/libexec/nirigo-inputplumber-migrate tests/migration.bats
+  files/system/usr/libexec/nirigo-inputplumber-migrate \
+  files/system/usr/libexec/nirigo-steamos-manager-migrate \
+  files/system/usr/libexec/nirigo-tdp tests/migration.bats
 ```
 
 Keyboard setup-helper checks (requires Node.js):

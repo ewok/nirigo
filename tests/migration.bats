@@ -179,3 +179,45 @@ CONF
     [ ! -e "$repo/files/system/usr/lib/modprobe.d/nirigo-hid-lenovo-go.conf" ]
     [ -f "$repo/files/system/usr/lib/systemd/system/nirigo-inputplumber-migrate.service" ]
 }
+
+@test "SteamOS Manager TDP helper reads, sets, and wraps the advertised range" {
+    state="$BATS_TEST_TMPDIR/tdp"
+    printf '15\n' >"$state"
+    export TDP_STATE="$state"
+    cat >"$BATS_TEST_TMPDIR/bin/busctl" <<'SH'
+#!/usr/bin/env bash
+if [[ $2 == get-property ]]; then
+    case "${*: -1}" in
+        TdpLimit) printf 'u %s\n' "$(<"$TDP_STATE")" ;;
+        TdpLimitMin) printf 'u 5\n' ;;
+        TdpLimitMax) printf 'u 30\n' ;;
+    esac
+elif [[ $2 == set-property ]]; then
+    printf '%s\n' "${*: -1}" >"$TDP_STATE"
+fi
+SH
+    chmod +x "$BATS_TEST_TMPDIR/bin/busctl"
+    run bash "$repo/files/system/usr/libexec/nirigo-tdp"
+    [ "$status" -eq 0 ]
+    [ "$output" = 15 ]
+    run bash "$repo/files/system/usr/libexec/nirigo-tdp" set 30
+    [ "$status" -eq 0 ]
+    [ "$output" = 30 ]
+    run bash "$repo/files/system/usr/libexec/nirigo-tdp" rotate
+    [ "$status" -eq 0 ]
+    [ "$output" = 5 ]
+    run bash "$repo/files/system/usr/libexec/nirigo-tdp" set 31
+    [ "$status" -eq 1 ]
+    [[ $output == *'between 5 and 30 W'* ]]
+}
+
+@test "SteamOS Manager TDP is installed, migrated, and exposed through DMS" {
+    grep -q 'steamos-manager-powerstation' "$repo/files/scripts/install-inputplumber.sh"
+    grep -q 'steamos-manager.service' "$repo/recipes/recipe.yml"
+    grep -q 'nirigo-steamos-manager-migrate.service' "$repo/recipes/recipe.yml"
+    grep -q 'ConditionPathExists=!/var/lib/nirigo/steamos-manager-migrated' "$repo/files/system/usr/lib/systemd/system/nirigo-steamos-manager-migrate.service"
+    grep -q 'com.steampowered.SteamOSManager1.TdpLimit1' "$repo/files/system/usr/libexec/nirigo-tdp"
+    grep -q 'Mod+Ctrl+T' "$repo/files/system/usr/etc/niri/config.d/40-dms.kdl"
+    grep -q 'dms-tdp-setup:' "$repo/files/system/usr/share/ublue-os/just/60-custom.just"
+    [ -f "$repo/files/system/usr/share/nirigo/dms-plugins/LegionGoTdp/plugin.json" ]
+}
