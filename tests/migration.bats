@@ -219,6 +219,8 @@ SH
     grep -q 'nirigo-steamos-manager-migrate.service' "$repo/recipes/recipe.yml"
     grep -q 'ConditionPathExists=!/var/lib/nirigo/steamos-manager-migrated' "$repo/files/system/usr/lib/systemd/system/nirigo-steamos-manager-migrate.service"
     grep -q 'com.steampowered.SteamOSManager1.TdpLimit1' "$repo/files/system/usr/libexec/nirigo-tdp"
+    grep -q 'PerformanceProfile s custom' "$repo/files/system/usr/libexec/nirigo-steamos-manager-profile"
+    grep -q 'ExecStartPost=/usr/libexec/nirigo-steamos-manager-profile' "$repo/files/system/usr/lib/systemd/user/steamos-manager.service.d/10-nirigo-tdp.conf"
     grep -q 'Mod+Ctrl+T' "$repo/files/system/usr/etc/niri/config.d/40-dms.kdl"
     grep -q 'dms-tdp-setup:' "$repo/files/system/usr/share/ublue-os/just/60-custom.just"
     [ -f "$repo/files/system/usr/share/nirigo/dms-plugins/LegionGoTdp/plugin.json" ]

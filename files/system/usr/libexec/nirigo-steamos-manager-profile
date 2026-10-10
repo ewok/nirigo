@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+service=com.steampowered.SteamOSManager1
+path=/com/steampowered/SteamOSManager1
+interface=com.steampowered.SteamOSManager1.PerformanceProfile1
+
+# TdpLimit1 is intentionally available only for the device profile's `custom`
+# power mode. The manager owns the persistent state, so select it after every
+# user-daemon start instead of depending on first-boot defaults.
+for _ in {1..20}; do
+    if busctl --user set-property "$service" "$path" "$interface" PerformanceProfile s custom; then
+        exit 0
+    fi
+    sleep 0.25
+done
+
+printf 'SteamOS Manager did not expose its performance-profile API.\n' >&2
+exit 1

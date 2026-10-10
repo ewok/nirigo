@@ -472,6 +472,9 @@ dependencies are deliberately omitted because this image uses Flatpak Steam.
 The native `hid-lenovo-go` driver is enabled again; the InputPlumber profile
 consumes the Legion Go HIDRAW devices directly.
 
+The image selects SteamOS Manager's `custom` performance profile at desktop
+login because this is the Legion Go profile that exposes the TDP API.
+
 After updating and logging in, run `ujust dms-tdp-setup` as your desktop user.
 In **Settings -> Plugins**, scan and enable **Legion Go TDP**, then add its pill
 to DankBar. It displays the current TDP in watts. Click it or press
