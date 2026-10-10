@@ -527,9 +527,8 @@ ujust install-nix
 
 ## Gaming with Steam and gamescope
 
-The image ships Bazzite's patched `gamescope` (installed from the
-`bazzite-org/bazzite-multilib` COPR by `files/scripts/install-gamescope.sh`;
-only gamescope is taken from that repo) and Steam from Flathub
+The image ships Bazzite's `terra-gamescope` build (installed from Terra by
+`files/scripts/install-gamescope.sh`) and Steam from Flathub
 (`com.valvesoftware.Steam`, system scope).
 
 There are three ways to run Steam:

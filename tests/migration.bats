@@ -162,6 +162,7 @@ CONF
     grep -q 'match app-id="steam" title="^Steam Big Picture Mode\$"' "$repo/files/system/usr/etc/niri/config.d/20-window-rules.kdl"
     grep -q 'exec /usr/libexec/nirigo-gamescope-steam --session' "$repo/files/system/usr/libexec/nirigo-gamescope-session"
     grep -q 'install-gamescope.sh' "$repo/recipes/recipe.yml"
+    grep -q 'terra-gamescope' "$repo/files/scripts/install-gamescope.sh"
     grep -q 'install-inputplumber.sh' "$repo/recipes/recipe.yml"
     grep -q 'inputplumber.service' "$repo/recipes/recipe.yml"
     grep -q 'com.valvesoftware.Steam' "$repo/recipes/recipe.yml"
