@@ -1,0 +1,12 @@
+[Unit]
+Description=Remove superseded Flatpak Steam installations
+ConditionPathExists=!/var/lib/nirigo/native-steam-migrated
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nirigo-steam-migrate
+
+[Install]
+WantedBy=multi-user.target

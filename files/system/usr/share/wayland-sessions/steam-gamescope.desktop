@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Steam (Game Mode)
-Comment=Steam Big Picture in a gamescope session
-Exec=/usr/libexec/nirigo-gamescope-session
+Comment=Native Steam Game Mode session
+Exec=gamescope-session-plus ogui-steam
 Type=Application
 DesktopNames=gamescope

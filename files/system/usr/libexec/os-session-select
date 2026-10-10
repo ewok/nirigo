@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+# gamescope-session-steam calls this for Steam's "Switch to Desktop" action.
+# End only the Game Mode user session; greetd will present its session chooser.
+set -Eeuo pipefail
+
+systemctl --user exit

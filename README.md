@@ -465,12 +465,11 @@ devices. Its packaged upstream `Lenovo Legion Go` profile creates virtual Xbox
 Elite, mouse, keyboard and touchpad devices. It starts as `inputplumber.service`.
 
 The image does not include HHD. RGB controls and HHD's overlay are unavailable.
-TDP is instead provided by the Bazzite-maintained `steamos-manager-powerstation`
-payload: it detects the Legion Go (`83E1`) and safely writes its firmware power
-attributes through the SteamOS Manager service. Its native Steam/Game Mode
-dependencies are deliberately omitted because this image uses Flatpak Steam.
-The native `hid-lenovo-go` driver is enabled again; the InputPlumber profile
-consumes the Legion Go HIDRAW devices directly.
+TDP is provided by Bazzite's `steamos-manager-powerstation` package: it detects
+the Legion Go (`83E1`) and safely writes its firmware power attributes through
+the SteamOS Manager service. The image uses native Steam and Game Mode packages
+from Terra. The native `hid-lenovo-go` driver is enabled again; the InputPlumber
+profile consumes the Legion Go HIDRAW devices directly.
 
 The image selects SteamOS Manager's `custom` performance profile at desktop
 login because this is the Legion Go profile that exposes the TDP API.
@@ -487,8 +486,8 @@ to its minimum. The helper is also available as:
 /usr/libexec/nirigo-tdp set 20   # set a valid watt limit
 ```
 
-Flatpak Steam cannot reach the host session D-Bus service, so its Quick Access
-performance panel cannot control TDP. Use the DMS widget or shortcut instead.
+Steam Game Mode can access SteamOS Manager directly. DMS remains available for
+desktop profile and TDP control.
 
 After upgrading from an HHD image, the one-shot migration removes stale HHD
 unit enablement from persistent `/etc`.
@@ -549,70 +548,22 @@ To install nix:
 ujust install-nix
 ```
 
-## Gaming with Steam and gamescope
+## Gaming with Steam and Game Mode
 
-The image ships Bazzite's `terra-gamescope` build (installed from Terra by
-`files/scripts/install-gamescope.sh`) and Steam from Flathub
-(`com.valvesoftware.Steam`, system scope).
+The image ships Bazzite's `terra-gamescope` and native RPM Steam/Game Mode
+packages from Terra. Select **Steam (Game Mode)** in greetd to start
+`gamescope-session-plus` with OpenGamepadUI and Steam Quick Access. The
+**Steam (Big Picture)** app launcher starts native Steam directly under niri.
 
-There are three ways to run Steam:
+In Game Mode, **Switch to Desktop** immediately ends the gamescope session and
+returns to greetd, where select the Niri session. This is intentionally not a
+live desktop handoff: it avoids introducing SDDM, autologin, or Bazzite's
+desktop session manager.
 
-1. **Steam (Big Picture)** launcher in the app menu: runs Steam Big Picture
-   directly as a fullscreen niri window, without gamescope
-   (`nirigo-gamescope-steam --direct`). niri window rules make the Big Picture
-    window and games (`steam_app_*`) fullscreen. Touch, gamepad, mouse and
-    keyboard all work, and the gamepad keeps working after Steam's Guide menus
-    (Quick Access, Legion+Y). There is no gamescope upscaling or Steam
-    Performance panel here.
-2. **Steam (Game Mode)** session in the greeter: gamescope drives the display
-   directly, similar to SteamOS/Bazzite Game Mode. Leave it with
-   Power → Exit Steam, which returns to the greeter.
-3. **Per-game launch options** (`gamescope -W 2560 -H 1600 -r 144 -f -- %command%`)
-   in Steam. Flatpak Steam cannot see the host gamescope, so install the
-   matching Flathub Vulkan layer first:
-
-   ```
-   ujust steam-gamescope-layer
-   ```
-
-   This is a stock gamescope build, not Bazzite's.
-
-The launcher used to run Steam inside a nested gamescope. There, after Steam
-opened a Guide menu, Big Picture stopped taking gamepad input while touch,
-mouse and keyboard still worked because Steam treated its window as unfocused.
-Nested mode is still available as
-`/usr/libexec/nirigo-gamescope-steam` without arguments.
-
-The launcher and the session both use `/usr/libexec/nirigo-gamescope-steam`.
-Gamescope modes default to the native panel (2560x1600 @ 144 Hz). To override
-resolution, FSR upscaling, orientation or Steam arguments:
-
-```
-ujust gamescope-config   # creates ~/.config/nirigo/gamescope.conf
-```
-
-The launcher only uses `NIRIGO_STEAM_DIRECT_ARGS` (default `-gamepadui`).
-`NIRIGO_STEAM_ARGS` does not apply to it, so SteamOS flags set there for
-nested mode do not reach it.
-
-Limitations:
-
-- In gamescope modes, a running Steam is shut down first. Otherwise Steam
-  would open outside gamescope. Stale `flatpak ps` entries whose PID is gone
-  are ignored, since asking a non-running Steam to shut down would close the
-  new Steam inside gamescope. The direct launcher does not restart Steam: a
-  running desktop Steam switches to Big Picture.
-- Nested gamescope runs without Steam integration (`-e`), because nested in
-  niri it sends mouse and keyboard clicks to the wrong window. It starts Steam
-  with `-steamos3 -steampal -steamdeck`, otherwise Big Picture turns black
-  after the startup animation. These flags are not used in Game Mode, because
-  together with `-e` Steam does not start. Touch does not work nested.
-- Steam's "Switch to Desktop" does nothing in Game Mode, because Flatpak Steam
-  cannot run `steamos-session-select` on the host.
-- If the Game Mode picture is rotated, add `--force-orientation left` (or
-  `right`) to `NIRIGO_GAMESCOPE_SESSION_ARGS`.
-- With Steam installed in both user and system scope, the user install is
-  used. Check with `flatpak list --app | grep -i steam`.
+The migration removes Flatpak Steam (`com.valvesoftware.Steam`) on first boot.
+Native Steam stores its state in `~/.local/share/Steam`; sign in again and add
+existing library folders from other drives in Steam settings. Treat existing
+Flatpak Steam compatibility prefixes as separate data.
 
 ## ISO
 
@@ -626,8 +577,8 @@ Local migration checks (requires Bats and ShellCheck):
 bats tests/migration.bats
 shellcheck files/scripts/check-niri-config-drift.sh files/scripts/remove-packages.sh \
   files/scripts/niri-dropins.sh files/scripts/install-gamescope.sh \
-  files/scripts/install-inputplumber.sh files/system/usr/libexec/nirigo-gamescope-steam \
-  files/system/usr/libexec/nirigo-gamescope-session \
+  files/scripts/install-inputplumber.sh files/system/usr/libexec/os-session-select \
+  files/system/usr/libexec/nirigo-steam-migrate \
   files/system/usr/libexec/nirigo-inputplumber-migrate \
   files/system/usr/libexec/nirigo-steamos-manager-migrate \
   files/system/usr/libexec/nirigo-tdp tests/migration.bats

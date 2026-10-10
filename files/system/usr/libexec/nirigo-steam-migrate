@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+if command -v flatpak >/dev/null 2>&1; then
+    for scope in --user --system; do
+        flatpak uninstall --noninteractive "$scope" com.valvesoftware.Steam 2>/dev/null || true
+    done
+fi
+
+install -d -m 0755 /var/lib/nirigo
+touch /var/lib/nirigo/native-steam-migrated

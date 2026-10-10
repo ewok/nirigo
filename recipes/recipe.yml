@@ -125,8 +125,6 @@ modules:
         install:
           - com.vivaldi.Vivaldi
           - org.gnome.Loupe
-          # Wrapped by gamescope via /usr/libexec/nirigo-gamescope-steam.
-          - com.valvesoftware.Steam
 
   # Install the pinned plugin first; image files overlay its focus fixes.
   - type: script
@@ -147,6 +145,7 @@ modules:
         - inputplumber.service
         - nirigo-inputplumber-migrate.service
         - nirigo-steamos-manager-migrate.service
+        - nirigo-steam-migrate.service
         - steamos-manager.service
       masked:
         - sddm.service
