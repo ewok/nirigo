@@ -465,10 +465,12 @@ devices. Its packaged upstream `Lenovo Legion Go` profile creates virtual Xbox
 Elite, mouse, keyboard and touchpad devices. It starts as `inputplumber.service`.
 
 The image does not include HHD. RGB controls and HHD's overlay are unavailable.
-TDP is instead provided by Bazzite's `steamos-manager-powerstation`: it detects
-the Legion Go (`83E1`) and safely writes its firmware power attributes through
-the SteamOS Manager service. The native `hid-lenovo-go` driver is enabled again;
-the InputPlumber profile consumes the Legion Go HIDRAW devices directly.
+TDP is instead provided by the Bazzite-maintained `steamos-manager-powerstation`
+payload: it detects the Legion Go (`83E1`) and safely writes its firmware power
+attributes through the SteamOS Manager service. Its native Steam/Game Mode
+dependencies are deliberately omitted because this image uses Flatpak Steam.
+The native `hid-lenovo-go` driver is enabled again; the InputPlumber profile
+consumes the Legion Go HIDRAW devices directly.
 
 After updating and logging in, run `ujust dms-tdp-setup` as your desktop user.
 In **Settings -> Plugins**, scan and enable **Legion Go TDP**, then add its pill

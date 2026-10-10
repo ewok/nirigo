@@ -213,6 +213,8 @@ SH
 
 @test "SteamOS Manager TDP is installed, migrated, and exposed through DMS" {
     grep -q 'steamos-manager-powerstation' "$repo/files/scripts/install-inputplumber.sh"
+    grep -q 'rpm --upgrade --nodeps' "$repo/files/scripts/install-inputplumber.sh"
+    grep -q 'install policycoreutils' "$repo/files/scripts/install-inputplumber.sh"
     grep -q 'steamos-manager.service' "$repo/recipes/recipe.yml"
     grep -q 'nirigo-steamos-manager-migrate.service' "$repo/recipes/recipe.yml"
     grep -q 'ConditionPathExists=!/var/lib/nirigo/steamos-manager-migrated' "$repo/files/system/usr/lib/systemd/system/nirigo-steamos-manager-migrate.service"
