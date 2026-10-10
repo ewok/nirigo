@@ -15,7 +15,7 @@ command -v "$DNF" >/dev/null 2>&1 || DNF=dnf
 # Native Steam needs 32-bit PipeWire, whose AAC dependency conflicts with the
 # single-architecture libfdk-aac inherited from the base image. Let DNF replace
 # it while resolving the complete native Steam transaction.
-"$DNF" -y --allowerasing --enablerepo=terra --enablerepo=terra-extras install \
+"$DNF" -y --enablerepo=terra --enablerepo=terra-extras install --allowerasing \
     inputplumber \
     steam \
     gamescope-session \
