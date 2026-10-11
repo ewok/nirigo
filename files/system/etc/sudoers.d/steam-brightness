@@ -1,0 +1,1 @@
+%wheel ALL=(root) NOPASSWD: /usr/bin/tee /sys/class/backlight/amdgpu_bl1/brightness

@@ -555,6 +555,10 @@ packages from Terra. Select **Steam (Game Mode)** in greetd to start
 `gamescope-session-plus` with OpenGamepadUI and Steam Quick Access. The
 **Steam (Big Picture)** app launcher starts native Steam directly under niri.
 
+Steam Big Picture can adjust the Legion Go's internal display brightness
+without prompting for a password. The image permits wheel users to write only
+the `amdgpu_bl1` brightness control through `tee`.
+
 In Game Mode, **Switch to Desktop** immediately ends the gamescope session and
 returns to greetd, where select the Niri session. This is intentionally not a
 live desktop handoff: it avoids introducing SDDM, autologin, or Bazzite's
